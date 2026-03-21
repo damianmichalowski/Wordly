@@ -1,0 +1,47 @@
+import type { UserProfile } from '@/src/types/profile';
+
+type HomeLinkParams = {
+  wordId?: string | null;
+  stateVersion: number;
+  profile: UserProfile;
+};
+
+const baseScheme = 'wordly://';
+
+export function buildHomeDeepLink(params: HomeLinkParams): string {
+  const queryEntries = [
+    `source=${encodeURIComponent(params.profile.languagePair.sourceLanguage)}`,
+    `target=${encodeURIComponent(params.profile.languagePair.targetLanguage)}`,
+    `level=${encodeURIComponent(params.profile.displayLevel)}`,
+    `stateVersion=${encodeURIComponent(String(params.stateVersion))}`,
+  ];
+  if (params.wordId) {
+    queryEntries.push(`wordId=${encodeURIComponent(params.wordId)}`);
+  }
+  return `${baseScheme}home?${queryEntries.join('&')}`;
+}
+
+export function parseHomeDeepLink(url: string) {
+  const [pathPart, queryPart] = url.split('?');
+  const route = pathPart.replace('wordly://', '').replace('/', '');
+  const searchParams = new Map<string, string>();
+
+  if (queryPart) {
+    queryPart.split('&').forEach((entry) => {
+      const [rawKey, rawValue] = entry.split('=');
+      if (!rawKey) {
+        return;
+      }
+      searchParams.set(decodeURIComponent(rawKey), decodeURIComponent(rawValue ?? ''));
+    });
+  }
+
+  return {
+    route,
+    wordId: searchParams.get('wordId') ?? null,
+    source: searchParams.get('source') ?? null,
+    target: searchParams.get('target') ?? null,
+    level: searchParams.get('level') ?? null,
+    stateVersion: Number(searchParams.get('stateVersion') ?? '0'),
+  };
+}

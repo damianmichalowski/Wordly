@@ -30,11 +30,21 @@ yarn-error.*
 .DS_Store
 *.pem
 
-# local env files
+# local env files (secrets — never commit)
+.env
+.env.*
+!.env.example
 .env*.local
 
 # typescript
 *.tsbuildinfo
+
+# tooling / noise
+coverage/
+*.log
+.idea/
+.vscode/*
+!.vscode/extensions.json
 
 # generated native folders
 /ios
