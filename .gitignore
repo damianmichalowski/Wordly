@@ -6,6 +6,7 @@ node_modules/
 # Expo
 .expo/
 dist/
+dist-export-test/
 web-build/
 expo-env.d.ts
 
@@ -39,12 +40,33 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
+# External vocabulary CSVs (Oxford etc. — do not commit)
+scripts/vocabulary-seed/data/raw/*.csv
+scripts/vocabulary-seed/data/raw/*.tsv
+scripts/vocabulary-seed/data/raw/freedict-eng-pol/*.xml
+
+# Duży wygenerowany seed (regeneruj: npm run vocabulary:seed:freedict)
+supabase/seeds/generated/wordly_freedict_10k.sql
+supabase/seeds/generated/wordly_freedict_10k.report.txt
+supabase/seeds/generated/wordly_freedict_full.sql
+supabase/seeds/generated/wordly_freedict_full.report.txt
+supabase/seeds/generated/freedict_chunks/*.sql
+!supabase/seeds/generated/freedict_chunks/README.md
+
+# lokalny wynik merge (przykład w repo: wordly_seed.sample.sql)
+supabase/seeds/generated/wordly_seed.sql
+supabase/seeds/generated/wordly_seed.report.txt
+
 # tooling / noise
 coverage/
 *.log
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Cursor — MCP / klucze API tylko lokalnie (np. Stitch, Supabase MCP)
+.cursor/mcp.json
+**/.cursor/mcp.json
 
 # generated native folders
 /ios

@@ -1,0 +1,108 @@
+-- =============================================================================
+-- 1) RLS: publiczny odczyt (anon) zostaje; zapisy tylko przez service_role
+--    (klucz service_role w Supabase i tak omija RLS — jawne polityki pomagają
+--    w narzędziach / Edge Functions i dokumentują intencję).
+--    Aplikacja mobilna (anon) nadal NIE może INSERT-ować katalogu.
+-- =============================================================================
+
+drop policy if exists "vocabulary_lemmas_service_role_all" on public.vocabulary_lemmas;
+create policy "vocabulary_lemmas_service_role_all"
+  on public.vocabulary_lemmas
+  for all
+  to service_role
+  using (true)
+  with check (true);
+
+drop policy if exists "vocabulary_senses_service_role_all" on public.vocabulary_senses;
+create policy "vocabulary_senses_service_role_all"
+  on public.vocabulary_senses
+  for all
+  to service_role
+  using (true)
+  with check (true);
+
+drop policy if exists "vocabulary_examples_service_role_all" on public.vocabulary_examples;
+create policy "vocabulary_examples_service_role_all"
+  on public.vocabulary_examples
+  for all
+  to service_role
+  using (true)
+  with check (true);
+
+drop policy if exists "deck_senses_service_role_all" on public.deck_senses;
+create policy "deck_senses_service_role_all"
+  on public.deck_senses
+  for all
+  to service_role
+  using (true)
+  with check (true);
+
+drop policy if exists "vocabulary_word_sense_links_service_role_all" on public.vocabulary_word_sense_links;
+create policy "vocabulary_word_sense_links_service_role_all"
+  on public.vocabulary_word_sense_links
+  for all
+  to service_role
+  using (true)
+  with check (true);
+
+-- Legacy flat catalog (import / narzędzia)
+drop policy if exists "vocabulary_words_service_role_all" on public.vocabulary_words;
+create policy "vocabulary_words_service_role_all"
+  on public.vocabulary_words
+  for all
+  to service_role
+  using (true)
+  with check (true);
+
+-- =============================================================================
+-- 2) Seed: EN → PL (przykładowy zestaw z scripts/vocabulary-seed; CEFR-J sample + tłumaczenia)
+--    Idempotentne: on conflict (id) do nothing
+-- =============================================================================
+
+insert into public.vocabulary_lemmas (id, source_language_code, lemma_text, pronunciation_text) values ('674f0f78-1e3b-532e-ba0d-a53f926856bb', 'en', 'abandon', null) on conflict (id) do nothing;
+insert into public.vocabulary_lemmas (id, source_language_code, lemma_text, pronunciation_text) values ('f0309d03-0e45-59c2-97a9-360847470ae4', 'en', 'abandoned', null) on conflict (id) do nothing;
+insert into public.vocabulary_lemmas (id, source_language_code, lemma_text, pronunciation_text) values ('ae8b2313-2e61-525b-8551-01bdb1eb72dc', 'en', 'ability', null) on conflict (id) do nothing;
+insert into public.vocabulary_lemmas (id, source_language_code, lemma_text, pronunciation_text) values ('c5db0426-1552-56ab-bfdc-02c5866ebc75', 'en', 'able', null) on conflict (id) do nothing;
+insert into public.vocabulary_lemmas (id, source_language_code, lemma_text, pronunciation_text) values ('77d98aa4-6d95-5502-b869-942cf143b743', 'en', 'about', null) on conflict (id) do nothing;
+insert into public.vocabulary_lemmas (id, source_language_code, lemma_text, pronunciation_text) values ('8109dcc4-97ee-57d9-8a77-0a6f3ea775a5', 'en', 'above', null) on conflict (id) do nothing;
+insert into public.vocabulary_lemmas (id, source_language_code, lemma_text, pronunciation_text) values ('bf0ff23d-8d37-5a0e-818f-b45825eebd96', 'en', 'abroad', null) on conflict (id) do nothing;
+insert into public.vocabulary_lemmas (id, source_language_code, lemma_text, pronunciation_text) values ('6ea66c2e-25db-55e4-b31c-12ac1b0724b3', 'en', 'accept', null) on conflict (id) do nothing;
+insert into public.vocabulary_lemmas (id, source_language_code, lemma_text, pronunciation_text) values ('a4b3b562-c702-5674-9ba2-94616e0cac75', 'en', 'accident', null) on conflict (id) do nothing;
+insert into public.vocabulary_lemmas (id, source_language_code, lemma_text, pronunciation_text) values ('0bbe98b7-01a5-5335-9e6e-b64282c777b0', 'en', 'accommodation', null) on conflict (id) do nothing;
+insert into public.vocabulary_lemmas (id, source_language_code, lemma_text, pronunciation_text) values ('24835ec2-fc7d-57fb-84ab-4fcebd66bcda', 'en', 'achieve', null) on conflict (id) do nothing;
+insert into public.vocabulary_lemmas (id, source_language_code, lemma_text, pronunciation_text) values ('9449014d-9cde-5551-af2e-aa9f658b3e50', 'en', 'across', null) on conflict (id) do nothing;
+insert into public.vocabulary_lemmas (id, source_language_code, lemma_text, pronunciation_text) values ('c29b8417-bb01-581f-9437-465fc3bbd8df', 'en', 'act', null) on conflict (id) do nothing;
+insert into public.vocabulary_lemmas (id, source_language_code, lemma_text, pronunciation_text) values ('dec16551-ab1b-517b-84ab-ae4fc3c05c7e', 'en', 'actually', null) on conflict (id) do nothing;
+insert into public.vocabulary_lemmas (id, source_language_code, lemma_text, pronunciation_text) values ('181d2979-a3af-5244-a6e8-ab214610d7cb', 'en', 'addition', null) on conflict (id) do nothing;
+insert into public.vocabulary_lemmas (id, source_language_code, lemma_text, pronunciation_text) values ('9d579b6e-5e30-5a11-be3f-e5983c62c933', 'en', 'additional', null) on conflict (id) do nothing;
+insert into public.vocabulary_lemmas (id, source_language_code, lemma_text, pronunciation_text) values ('b50f24eb-bb2f-53c8-b950-67f5f542cb94', 'en', 'address', null) on conflict (id) do nothing;
+insert into public.vocabulary_lemmas (id, source_language_code, lemma_text, pronunciation_text) values ('1d2ed77e-d540-554a-9b81-46002173b9ff', 'en', 'adult', null) on conflict (id) do nothing;
+insert into public.vocabulary_lemmas (id, source_language_code, lemma_text, pronunciation_text) values ('b0e97ed9-f610-5ad9-87e9-1b9a11533acb', 'en', 'advance', null) on conflict (id) do nothing;
+insert into public.vocabulary_lemmas (id, source_language_code, lemma_text, pronunciation_text) values ('35ab6d1a-6c98-5cc4-aff8-b7eb9ab4be7f', 'en', 'advantage', null) on conflict (id) do nothing;
+insert into public.vocabulary_lemmas (id, source_language_code, lemma_text, pronunciation_text) values ('da804a61-67f7-5f14-bf3b-df3d1ce90732', 'en', 'adventure', null) on conflict (id) do nothing;
+
+insert into public.vocabulary_senses (id, lemma_id, target_language_code, part_of_speech, gloss_text, cefr_level, sense_index, category) values ('a4a30254-2cb8-5aeb-a36f-49df6e862db4', '674f0f78-1e3b-532e-ba0d-a53f926856bb', 'pl', 'verb', 'porzucić', 'B1', 0, null) on conflict (id) do nothing;
+insert into public.vocabulary_senses (id, lemma_id, target_language_code, part_of_speech, gloss_text, cefr_level, sense_index, category) values ('15e4a40c-859f-5612-9873-0985fca6cee2', 'f0309d03-0e45-59c2-97a9-360847470ae4', 'pl', 'adj', 'opuszczony', 'B2', 0, null) on conflict (id) do nothing;
+insert into public.vocabulary_senses (id, lemma_id, target_language_code, part_of_speech, gloss_text, cefr_level, sense_index, category) values ('4d5634a3-02cb-552f-83f5-6a7f45d51ad6', 'ae8b2313-2e61-525b-8551-01bdb1eb72dc', 'pl', 'noun', 'zdolność', 'A2', 0, null) on conflict (id) do nothing;
+insert into public.vocabulary_senses (id, lemma_id, target_language_code, part_of_speech, gloss_text, cefr_level, sense_index, category) values ('cb5c8860-8c93-5e91-affe-1d161c88e4c0', 'c5db0426-1552-56ab-bfdc-02c5866ebc75', 'pl', 'adj', 'zdolny', 'B1', 0, null) on conflict (id) do nothing;
+insert into public.vocabulary_senses (id, lemma_id, target_language_code, part_of_speech, gloss_text, cefr_level, sense_index, category) values ('622ce0c0-6511-558a-8191-88a1fe900fd1', '77d98aa4-6d95-5502-b869-942cf143b743', 'pl', 'adv', 'około', 'A1', 0, null) on conflict (id) do nothing;
+insert into public.vocabulary_senses (id, lemma_id, target_language_code, part_of_speech, gloss_text, cefr_level, sense_index, category) values ('8de78423-3e7d-515d-9589-473c7e0e6ec6', '77d98aa4-6d95-5502-b869-942cf143b743', 'pl', 'prep', 'o', 'A1', 1, null) on conflict (id) do nothing;
+insert into public.vocabulary_senses (id, lemma_id, target_language_code, part_of_speech, gloss_text, cefr_level, sense_index, category) values ('120f57eb-ba50-50d9-aa41-27c9485061e0', '8109dcc4-97ee-57d9-8a77-0a6f3ea775a5', 'pl', 'prep', 'nad', 'A1', 0, null) on conflict (id) do nothing;
+insert into public.vocabulary_senses (id, lemma_id, target_language_code, part_of_speech, gloss_text, cefr_level, sense_index, category) values ('518cc7ef-6971-5b1f-b8c0-8ecff4c24e58', 'bf0ff23d-8d37-5a0e-818f-b45825eebd96', 'pl', 'adv', 'za granicą', 'A2', 0, null) on conflict (id) do nothing;
+insert into public.vocabulary_senses (id, lemma_id, target_language_code, part_of_speech, gloss_text, cefr_level, sense_index, category) values ('bfbd17b1-c521-5498-bc75-46ff2f8e3188', '6ea66c2e-25db-55e4-b31c-12ac1b0724b3', 'pl', 'verb', 'akceptować', 'A2', 0, null) on conflict (id) do nothing;
+insert into public.vocabulary_senses (id, lemma_id, target_language_code, part_of_speech, gloss_text, cefr_level, sense_index, category) values ('af91f285-9e99-5f90-ae71-72951798a58f', 'a4b3b562-c702-5674-9ba2-94616e0cac75', 'pl', 'noun', 'wypadek', 'A2', 0, null) on conflict (id) do nothing;
+insert into public.vocabulary_senses (id, lemma_id, target_language_code, part_of_speech, gloss_text, cefr_level, sense_index, category) values ('b9ea297a-e3c1-5d92-aa43-e894fadf550e', '0bbe98b7-01a5-5335-9e6e-b64282c777b0', 'pl', 'noun', 'zakwaterowanie', 'B2', 0, null) on conflict (id) do nothing;
+insert into public.vocabulary_senses (id, lemma_id, target_language_code, part_of_speech, gloss_text, cefr_level, sense_index, category) values ('722bd1e7-9b99-5953-9f22-4cffe501273e', '24835ec2-fc7d-57fb-84ab-4fcebd66bcda', 'pl', 'verb', 'osiągać', 'A2', 0, null) on conflict (id) do nothing;
+insert into public.vocabulary_senses (id, lemma_id, target_language_code, part_of_speech, gloss_text, cefr_level, sense_index, category) values ('84439269-80b6-5d9b-94de-944a3eb72d19', '9449014d-9cde-5551-af2e-aa9f658b3e50', 'pl', 'adv', 'przez', 'A2', 0, null) on conflict (id) do nothing;
+insert into public.vocabulary_senses (id, lemma_id, target_language_code, part_of_speech, gloss_text, cefr_level, sense_index, category) values ('9bb85f57-6005-5a9a-932a-a8eca33112b8', '9449014d-9cde-5551-af2e-aa9f658b3e50', 'pl', 'prep', 'przez', 'A2', 1, null) on conflict (id) do nothing;
+insert into public.vocabulary_senses (id, lemma_id, target_language_code, part_of_speech, gloss_text, cefr_level, sense_index, category) values ('fa9358bd-1f44-525d-8337-94b835132af1', 'c29b8417-bb01-581f-9437-465fc3bbd8df', 'pl', 'noun', 'akt', 'A2', 0, null) on conflict (id) do nothing;
+insert into public.vocabulary_senses (id, lemma_id, target_language_code, part_of_speech, gloss_text, cefr_level, sense_index, category) values ('5d69aa73-6b9e-5af8-a864-25ceffde3667', 'dec16551-ab1b-517b-84ab-ae4fc3c05c7e', 'pl', 'adv', 'faktycznie', 'A2', 0, null) on conflict (id) do nothing;
+insert into public.vocabulary_senses (id, lemma_id, target_language_code, part_of_speech, gloss_text, cefr_level, sense_index, category) values ('9988ec08-029b-52a4-bb0c-f40a3d6aec9d', '181d2979-a3af-5244-a6e8-ab214610d7cb', 'pl', 'noun', 'dodatek', 'A2', 0, null) on conflict (id) do nothing;
+insert into public.vocabulary_senses (id, lemma_id, target_language_code, part_of_speech, gloss_text, cefr_level, sense_index, category) values ('726ede3b-2493-58a9-9100-094321eac8b1', '9d579b6e-5e30-5a11-be3f-e5983c62c933', 'pl', 'adj', 'dodatkowy', 'A2', 0, null) on conflict (id) do nothing;
+insert into public.vocabulary_senses (id, lemma_id, target_language_code, part_of_speech, gloss_text, cefr_level, sense_index, category) values ('a9334ab3-a680-5283-a2d5-049605890c7b', 'b50f24eb-bb2f-53c8-b950-67f5f542cb94', 'pl', 'noun', 'adres', 'B1', 0, null) on conflict (id) do nothing;
+insert into public.vocabulary_senses (id, lemma_id, target_language_code, part_of_speech, gloss_text, cefr_level, sense_index, category) values ('18888904-85ad-5ef7-9463-68fa621d2d3f', 'b50f24eb-bb2f-53c8-b950-67f5f542cb94', 'pl', 'verb', 'zwracać się', 'B1', 1, null) on conflict (id) do nothing;
+insert into public.vocabulary_senses (id, lemma_id, target_language_code, part_of_speech, gloss_text, cefr_level, sense_index, category) values ('8eb23bce-72e5-5549-b1e8-4b26207a5399', '1d2ed77e-d540-554a-9b81-46002173b9ff', 'pl', 'noun', 'dorosły', 'A2', 0, null) on conflict (id) do nothing;
+insert into public.vocabulary_senses (id, lemma_id, target_language_code, part_of_speech, gloss_text, cefr_level, sense_index, category) values ('d7efdd75-d269-5d5b-b184-3537a8fa2948', 'b0e97ed9-f610-5ad9-87e9-1b9a11533acb', 'pl', 'noun', 'postęp', 'B1', 0, null) on conflict (id) do nothing;
+insert into public.vocabulary_senses (id, lemma_id, target_language_code, part_of_speech, gloss_text, cefr_level, sense_index, category) values ('0e2d2aaf-b39f-5ff5-8b6e-53dd928841fe', 'b0e97ed9-f610-5ad9-87e9-1b9a11533acb', 'pl', 'verb', 'posuwać się naprzód', 'B1', 1, null) on conflict (id) do nothing;
+insert into public.vocabulary_senses (id, lemma_id, target_language_code, part_of_speech, gloss_text, cefr_level, sense_index, category) values ('392e7060-19d5-5aa9-a9a6-029c22812bce', '35ab6d1a-6c98-5cc4-aff8-b7eb9ab4be7f', 'pl', 'noun', 'przewaga', 'B1', 0, null) on conflict (id) do nothing;
+insert into public.vocabulary_senses (id, lemma_id, target_language_code, part_of_speech, gloss_text, cefr_level, sense_index, category) values ('e28a5fcf-152f-5712-92fd-233e0c4eea5c', 'da804a61-67f7-5f14-bf3b-df3d1ce90732', 'pl', 'noun', 'przygoda', 'B1', 0, null) on conflict (id) do nothing;

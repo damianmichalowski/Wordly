@@ -1,7 +1,9 @@
-export type WidgetActionType = 'known' | 'skip';
+export type WidgetActionType = 'known';
 
 export type WidgetSurfaceSnapshot = {
   deepLink: string;
+  /** iOS medium widget: tap „Known” → `applyWidgetAction` po otwarciu aplikacji */
+  knownDeepLink: string | null;
   stateVersion: number;
   updatedAt: string;
   sourceLanguage: string;
@@ -11,6 +13,8 @@ export type WidgetSurfaceSnapshot = {
   sourceText: string | null;
   targetText: string | null;
   emptyReason?: 'onboarding-incomplete' | 'no-words-for-config' | 'all-words-completed';
+  /** Ustawiane przed pobraniem następnego słowa (Known); widgecik pokazuje stan ładowania. */
+  uiState?: 'loading' | 'ready';
 };
 
 export type WidgetActionResult = {

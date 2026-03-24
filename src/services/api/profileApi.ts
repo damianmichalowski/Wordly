@@ -1,5 +1,19 @@
-import { hasSupabaseEnv, getSupabaseClient } from '@/src/lib/supabase/client';
+import { getSupabaseClient, hasSupabaseEnv } from '@/src/lib/supabase/client';
+import { getAuthenticatedUserId } from '@/src/services/auth/ensureSession';
+import { getUserProfile, saveUserProfile } from '@/src/services/storage/profileStorage';
 import type { UserProfile } from '@/src/types/profile';
+
+/** Po zalogowaniu (np. anon) ujednolicaj `userId` w lokalnym profilu z `auth.uid()`. */
+export async function syncStoredProfileUserIdWithAuth(): Promise<void> {
+  const uid = await getAuthenticatedUserId();
+  if (!uid) {
+    return;
+  }
+  const profile = await getUserProfile();
+  if (profile && profile.userId !== uid) {
+    await saveUserProfile({ ...profile, userId: uid, updatedAt: new Date().toISOString() });
+  }
+}
 
 export async function upsertProfileToSupabase(profile: UserProfile): Promise<void> {
   if (!hasSupabaseEnv()) {

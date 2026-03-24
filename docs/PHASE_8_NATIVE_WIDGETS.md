@@ -1,12 +1,23 @@
-# Phase 8 — Native widgets & external surfaces (plan)
+# Phase 8 — Native widgets & external surfaces
 
-This document is the implementation roadmap for **real** home-screen and lock-screen surfaces. It assumes Phases 0–7 are done: shared domain, `widgetSurfaceService`, deep links, and `stateVersion` sync are defined in JS.
+## Implemented in this repo (iOS)
 
-**Expo Go is not sufficient** for shipping widgets. You need **development builds** (`expo run:ios` / `expo run:android` or EAS Build) and **custom native targets** (widget extensions).
+| Piece | Location |
+|-------|----------|
+| WidgetKit extension (Home + Lock Screen) | `targets/widget/` — `WordlyDailyWidget`, kind `WordlyDailyWidget` — tylko **słowo + tłumaczenie** (bez dodatkowych napisów); tap całego widgecie → aplikacja |
+| App Group shared storage | `group.com.wordly.mobile` — JSON under `wordly.widget.snapshot.v1` |
+| RN bridge | `src/features/wordly-widget-bridge` — `setSnapshotJson` + `WidgetCenter.reloadTimelines` |
+| JS sync | `src/services/widgets/syncWidgetSnapshot.ts`, `useWidgetSnapshotSync` |
+| Deep linki akcji | `wordly://home?...&action=known` lub `action=skip` — `useWidgetDeepLinkActions` → `applyWidgetAction` |
+| Snapshot pola | `knownDeepLink` w `WidgetSurfaceSnapshot` (tylko Known; `buildWidgetActionDeepLink`) |
+
+**Android** w tej fazie pominięty (tylko zapis JSON w `SharedPreferences` w bridge).
+
+**Expo Go** nie obsługuje widgetu — użyj **development buildu** (`expo run:ios` po `expo prebuild`). Ustaw **`ios.appleTeamId`** w `app.json` (lub w Xcode), żeby podpisać appkę + extension.
 
 ---
 
-## 1. Goals
+## 1. Goals (roadmap)
 
 | Platform | Surface | MVP | Later |
 |----------|---------|-----|--------|
@@ -132,7 +143,7 @@ Expo documents **development builds** and **custom native code**; widgets are a 
 ## 9. Suggested repo layout after prebuild
 
 ```
-wordly-mobile/
+Wordly/   # katalog główny repo (aplikacja mobilna)
   app/                    # Expo Router (unchanged)
   src/
     services/widgets/     # JS contracts (done)

@@ -1,7 +1,8 @@
 -- Decks + many-to-many deck_words; remove vocabulary_words.deck_id
 -- Seed: 6 words from app mock + 2 decks (overlap demonstrates M:N)
+-- Idempotent: można ponownie uruchomić.
 
-create table public.decks (
+create table if not exists public.decks (
   id uuid primary key default gen_random_uuid(),
   slug text not null unique,
   title text not null,
@@ -12,16 +13,16 @@ create table public.decks (
   updated_at timestamptz not null default now()
 );
 
-create index idx_decks_slug on public.decks (slug);
+create index if not exists idx_decks_slug on public.decks (slug);
 
-create table public.deck_words (
+create table if not exists public.deck_words (
   deck_id uuid not null references public.decks (id) on delete cascade,
   word_id uuid not null references public.vocabulary_words (id) on delete cascade,
   sort_order integer not null default 0,
   primary key (deck_id, word_id)
 );
 
-create index idx_deck_words_word on public.deck_words (word_id);
+create index if not exists idx_deck_words_word on public.deck_words (word_id);
 
 alter table public.vocabulary_words drop column if exists deck_id;
 
@@ -29,13 +30,16 @@ alter table public.vocabulary_words drop column if exists deck_id;
 alter table public.decks enable row level security;
 alter table public.deck_words enable row level security;
 
+drop policy if exists "decks_select_all" on public.decks;
 create policy "decks_select_all"
   on public.decks for select using (true);
 
+drop policy if exists "deck_words_select_all" on public.deck_words;
 create policy "deck_words_select_all"
   on public.deck_words for select using (true);
 
 -- Triggers: decks updated_at
+drop trigger if exists decks_set_updated_at on public.decks;
 create trigger decks_set_updated_at
   before update on public.decks
   for each row execute function public.set_updated_at();
@@ -60,7 +64,7 @@ values
   )
 on conflict (slug) do nothing;
 
--- Words (same content as src/constants/mockVocabulary.ts)
+-- Legacy flat vocabulary rows (demo deck); app uses vocabulary_sense_display + senses for new content.
 insert into public.vocabulary_words (
   id,
   source_language_code,

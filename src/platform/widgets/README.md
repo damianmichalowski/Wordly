@@ -25,12 +25,8 @@ This project keeps widget logic separate from app screens.
 - iOS/Android native widget modules should consume only these service contracts.
 - Native layers must not reimplement daily selection logic.
 
-## Phase 8 (native implementation plan)
+## Phase 8 (native)
 
-See **`docs/PHASE_8_NATIVE_WIDGETS.md`** for:
+Implemented for **iOS**: `targets/widget/` (WidgetKit) + **`src/features/wordly-widget-bridge`** writes `getWidgetSurfaceSnapshot()` JSON to the App Group and reloads timelines. **Android** stores the same JSON in `SharedPreferences` for a future `AppWidget`.
 
-- Expo development builds vs Expo Go
-- iOS WidgetKit + App Groups + App Intents
-- Android AppWidget + shared storage + refresh
-- Bridge strategy: JS snapshot → native shared store → widget UI
-- Step-by-step checklist before writing Swift/Kotlin
+Details: **`docs/PHASE_8_NATIVE_WIDGETS.md`**, root **`README.md`** (build commands).

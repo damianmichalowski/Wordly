@@ -1,0 +1,127 @@
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+
+import { StitchColors, StitchFonts, StitchRadius } from '@/src/theme/wordlyStitchTheme';
+
+export type CenteredMessageCtaVariant = 'home' | 'settings' | 'revision';
+
+type CenteredMessageCtaProps = {
+  variant: CenteredMessageCtaVariant;
+  title: string;
+  subtitle: string;
+  primaryLabel: string;
+  onPrimaryPress: () => void;
+};
+
+/**
+ * Wspólny układ: wyśrodkowany komunikat + jeden CTA.
+ * Warianty odwzorowują wcześniejsze style z `home` / `settings` / `revision` (bez zmiany wyglądu).
+ */
+export function CenteredMessageCta({
+  variant,
+  title,
+  subtitle,
+  primaryLabel,
+  onPrimaryPress,
+}: CenteredMessageCtaProps) {
+  const s =
+    variant === 'home' ? homeStyles : variant === 'settings' ? settingsStyles : revisionStyles;
+
+  return (
+    <View style={s.centered}>
+      <Text style={s.title}>{title}</Text>
+      <Text style={s.subtitle}>{subtitle}</Text>
+      <Pressable style={s.primaryButton} onPress={onPrimaryPress}>
+        <Text style={s.primaryButtonText}>{primaryLabel}</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+const centeredBase = {
+  flex: 1,
+  justifyContent: 'center' as const,
+  alignItems: 'center' as const,
+  padding: 24,
+  gap: 10,
+  backgroundColor: StitchColors.surface,
+};
+
+/** Było: `app/(tabs)/home.tsx`, blok `!profile`. */
+const homeStyles = StyleSheet.create({
+  centered: centeredBase,
+  title: {
+    fontSize: 22,
+    fontFamily: StitchFonts.headline,
+    color: StitchColors.onSurface,
+  },
+  subtitle: {
+    fontSize: 15,
+    fontFamily: StitchFonts.body,
+    textAlign: 'center',
+    color: StitchColors.onSurfaceVariant,
+  },
+  primaryButton: {
+    backgroundColor: StitchColors.primary,
+    borderRadius: StitchRadius.xl,
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  primaryButtonText: {
+    color: StitchColors.onPrimary,
+    fontFamily: StitchFonts.bodySemi,
+    fontSize: 16,
+  },
+});
+
+/** Było: `app/(tabs)/settings.tsx`, blok `!profile`. */
+const settingsStyles = StyleSheet.create({
+  centered: centeredBase,
+  title: {
+    fontSize: 26,
+    fontFamily: StitchFonts.headline,
+    color: StitchColors.onSurface,
+  },
+  subtitle: {
+    fontSize: 15,
+    fontFamily: StitchFonts.body,
+    color: StitchColors.onSurfaceVariant,
+  },
+  primaryButton: {
+    marginTop: 'auto',
+    backgroundColor: StitchColors.primary,
+    borderRadius: StitchRadius.md,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  primaryButtonText: {
+    color: StitchColors.onPrimary,
+    fontFamily: StitchFonts.bodySemi,
+  },
+});
+
+/** Było: `revisionScreenStyles`, blok brak profilu w `revision.tsx`. */
+const revisionStyles = StyleSheet.create({
+  centered: centeredBase,
+  title: {
+    fontSize: 22,
+    fontFamily: StitchFonts.headline,
+    color: StitchColors.onSurface,
+  },
+  subtitle: {
+    fontSize: 15,
+    fontFamily: StitchFonts.body,
+    textAlign: 'center',
+    color: StitchColors.onSurfaceVariant,
+  },
+  primaryButton: {
+    flex: 1,
+    backgroundColor: StitchColors.primary,
+    borderRadius: StitchRadius.md,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  primaryButtonText: {
+    color: StitchColors.onPrimary,
+    fontFamily: StitchFonts.bodySemi,
+  },
+});

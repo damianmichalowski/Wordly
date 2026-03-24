@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { deriveDisplayLevel } from '@/src/domain/userProfile/levelMapping';
+import { emitProfileSettingsSaved } from '@/src/events/profileSettingsEvents';
+import { resetDailyWordState } from '@/src/services/api/progressApi';
 import { upsertProfileToSupabase } from '@/src/services/api/profileApi';
-import { resetDailyWordState } from '@/src/services/storage/dailyWordStorage';
 import { getUserProfile, saveUserProfile } from '@/src/services/storage/profileStorage';
+import { syncWidgetSnapshotFromApp } from '@/src/services/widgets/syncWidgetSnapshot';
 import type { CefrLevel } from '@/src/types/cefr';
 import type { LanguageCode } from '@/src/types/language';
 import type { DisplayLevelPolicy, UserProfile } from '@/src/types/profile';
@@ -91,13 +93,18 @@ export function useSettings() {
 
     await saveUserProfile(updatedProfile);
     await upsertProfileToSupabase(updatedProfile);
-    await resetDailyWordState();
+    if (updatedProfile.userId && updatedProfile.userId !== 'local-user') {
+      await resetDailyWordState(updatedProfile.userId);
+    }
 
     setState((prev) => ({
       ...prev,
       isSaving: false,
       profile: updatedProfile,
     }));
+
+    await syncWidgetSnapshotFromApp();
+    emitProfileSettingsSaved();
   }, [
     displayLevel,
     state.currentLevel,

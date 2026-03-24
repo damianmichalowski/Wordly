@@ -1,5 +1,8 @@
 import { Redirect } from 'expo-router';
 
-export default function TabsIndexRedirect() {
+/**
+ * Route: `/(tabs)`: domyślna zakładka.
+ */
+export default function TabsIndexRoute() {
   return <Redirect href="/(tabs)/home" />;
 }

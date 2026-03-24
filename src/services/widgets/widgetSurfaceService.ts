@@ -1,8 +1,21 @@
-import { applyDailyWordAction, getDailyWordSnapshot } from '@/src/services/dailyWord/dailyWordService';
-import { readDailyWordState } from '@/src/services/storage/dailyWordStorage';
-import { getUserProfile } from '@/src/services/storage/profileStorage';
-import { buildHomeDeepLink } from '@/src/services/widgets/deepLinks';
-import type { WidgetActionResult, WidgetActionType, WidgetSurfaceSnapshot } from '@/src/types/widgets';
+import { hasSupabaseEnv } from "@/src/lib/supabase/client";
+import { fetchDailyWordState } from "@/src/services/api/progressApi";
+import {
+    applyDailyWordAction,
+    getDailyWordSnapshot,
+} from "@/src/services/dailyWord/dailyWordService";
+import { getUserProfile } from "@/src/services/storage/profileStorage";
+import {
+    buildHomeDeepLink,
+    buildWidgetActionDeepLink,
+} from "@/src/services/widgets/deepLinks";
+import { syncWidgetLoadingSnapshot } from "@/src/services/widgets/widgetLoadingSync";
+import type {
+    WidgetActionResult,
+    WidgetActionType,
+    WidgetSurfaceSnapshot,
+} from "@/src/types/widgets";
+import { vocabularyWordDisplayTargetText } from "@/src/types/words";
 
 type SnapshotOptions = {
   revealTranslation?: boolean;
@@ -10,16 +23,17 @@ type SnapshotOptions = {
 
 function buildUnavailableSnapshot(): WidgetSurfaceSnapshot {
   return {
-    deepLink: 'wordly://(onboarding)',
+    deepLink: "wordly://(onboarding)",
+    knownDeepLink: null,
     stateVersion: 0,
     updatedAt: new Date(0).toISOString(),
-    sourceLanguage: '',
-    targetLanguage: '',
-    displayLevel: '',
+    sourceLanguage: "",
+    targetLanguage: "",
+    displayLevel: "",
     wordId: null,
     sourceText: null,
     targetText: null,
-    emptyReason: 'onboarding-incomplete',
+    emptyReason: "onboarding-incomplete",
   };
 }
 
@@ -34,12 +48,19 @@ export async function getWidgetSurfaceSnapshot(
   const dailySnapshot = await getDailyWordSnapshot(profile);
   const word = dailySnapshot.activeWord;
 
+  const homeParams = {
+    wordId: word?.id,
+    stateVersion: dailySnapshot.stateVersion,
+    profile,
+  };
+
+  const hasActiveWord = Boolean(word?.id);
+
   return {
-    deepLink: buildHomeDeepLink({
-      wordId: word?.id,
-      stateVersion: dailySnapshot.stateVersion,
-      profile,
-    }),
+    deepLink: buildHomeDeepLink(homeParams),
+    knownDeepLink: hasActiveWord
+      ? buildWidgetActionDeepLink({ ...homeParams, action: "known" })
+      : null,
     stateVersion: dailySnapshot.stateVersion,
     updatedAt: dailySnapshot.updatedAt,
     sourceLanguage: profile.languagePair.sourceLanguage,
@@ -47,7 +68,11 @@ export async function getWidgetSurfaceSnapshot(
     displayLevel: profile.displayLevel,
     wordId: word?.id ?? null,
     sourceText: word?.sourceText ?? null,
-    targetText: options.revealTranslation ? (word?.targetText ?? null) : null,
+    targetText: options.revealTranslation
+      ? word
+        ? vocabularyWordDisplayTargetText(word)
+        : null
+      : null,
     emptyReason: dailySnapshot.emptyReason,
   };
 }
@@ -57,28 +82,36 @@ export async function applyWidgetAction(params: {
   expectedStateVersion?: number;
 }): Promise<WidgetActionResult> {
   const profile = await getUserProfile();
-  if (!profile) {
+  if (!profile || profile.userId === "local-user" || !hasSupabaseEnv()) {
     return {
-      status: 'unavailable',
+      status: "unavailable",
       snapshot: buildUnavailableSnapshot(),
     };
   }
 
-  const state = await readDailyWordState();
+  const state = await fetchDailyWordState(profile.userId);
   if (
-    typeof params.expectedStateVersion === 'number' &&
+    typeof params.expectedStateVersion === "number" &&
     params.expectedStateVersion !== state.stateVersion
   ) {
     return {
-      status: 'stale',
+      status: "stale",
       snapshot: await getWidgetSurfaceSnapshot(),
     };
   }
 
-  await applyDailyWordAction(profile, params.action);
+  if (params.action !== "known") {
+    return {
+      status: "unavailable",
+      snapshot: await getWidgetSurfaceSnapshot(),
+    };
+  }
+
+  await syncWidgetLoadingSnapshot();
+  await applyDailyWordAction(profile, "known");
 
   return {
-    status: 'ok',
+    status: "ok",
     snapshot: await getWidgetSurfaceSnapshot(),
   };
 }

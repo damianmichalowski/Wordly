@@ -1,4 +1,5 @@
 import type { UserProfile } from '@/src/types/profile';
+import type { WidgetActionType } from '@/src/types/widgets';
 
 type HomeLinkParams = {
   wordId?: string | null;
@@ -21,6 +22,17 @@ export function buildHomeDeepLink(params: HomeLinkParams): string {
   return `${baseScheme}home?${queryEntries.join('&')}`;
 }
 
+/**
+ * Deep link z widgetu iOS (Known).
+ * `stateVersion` w query = oczekiwana wersja stanu w momencie tapnięcia (`expectedStateVersion`).
+ */
+export function buildWidgetActionDeepLink(
+  params: HomeLinkParams & { action: WidgetActionType },
+): string {
+  const base = buildHomeDeepLink(params);
+  return `${base}&action=${encodeURIComponent(params.action)}`;
+}
+
 export function parseHomeDeepLink(url: string) {
   const [pathPart, queryPart] = url.split('?');
   const route = pathPart.replace('wordly://', '').replace('/', '');
@@ -36,6 +48,9 @@ export function parseHomeDeepLink(url: string) {
     });
   }
 
+  const rawAction = searchParams.get('action');
+  const action: WidgetActionType | null = rawAction === 'known' ? 'known' : null;
+
   return {
     route,
     wordId: searchParams.get('wordId') ?? null,
@@ -43,5 +58,6 @@ export function parseHomeDeepLink(url: string) {
     target: searchParams.get('target') ?? null,
     level: searchParams.get('level') ?? null,
     stateVersion: Number(searchParams.get('stateVersion') ?? '0'),
+    action,
   };
 }

@@ -75,6 +75,8 @@ Ty potrzebujesz **par** `(source_lang, target_lang, source_text, target_text, ce
 
 Kolumny typu `data_source`, `license_code`, `source_url` przy `vocabulary_words` ułatwią audyt i kolejne importy — można dodać migracją, gdy ustalisz pierwsze źródło.
 
+**Model relacyjny (lemma → znaczenia → przykłady, CEFR na znaczeniu):** zob. [VOCABULARY_ARCHITECTURE.md](./VOCABULARY_ARCHITECTURE.md) i migrację `20260321100000_vocabulary_lemmas_senses_examples.sql`.
+
 ---
 
 ## 7. Model hybrydowy (baza + API) — pod skalowanie

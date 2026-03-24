@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android", "web"],
+  "apple": {
+    "modules": ["WordlyWidgetBridgeModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.wordlywidgetbridge.WordlyWidgetBridgeModule"]
+  }
+}
