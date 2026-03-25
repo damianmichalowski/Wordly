@@ -18,6 +18,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ScreenHeader } from '@/src/components/layout/ScreenHeader';
 import { CenteredMessageCta } from '@/src/components/ui/CenteredMessageCta';
+import {
+  ANDROID_RIPPLE_PRIMARY,
+  ANDROID_RIPPLE_SURFACE,
+  linkPressStyle,
+  primarySolidPressStyle,
+} from '@/src/components/ui/interaction';
 import { SelectionChip } from '@/src/components/ui/SelectionChip';
 import { supportedLanguages } from '@/src/constants/languages';
 import { useDailyWord } from '@/src/features/dailyWord/useDailyWord';
@@ -119,6 +125,7 @@ function StitchSettingsRow({
     <Pressable
       onPress={onPress}
       disabled={disabled}
+      android_ripple={ANDROID_RIPPLE_SURFACE}
       style={({ pressed }) => [
         styles.prefRow,
         pressed && !disabled && styles.prefRowPressed,
@@ -256,7 +263,10 @@ export default function SettingsScreen() {
                       />
                     ))}
             </View>
-            <Pressable style={styles.modalDone} onPress={closePicker}>
+            <Pressable
+              hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
+              style={({ pressed }) => [styles.modalDone, linkPressStyle(pressed, false)]}
+              onPress={closePicker}>
               <Text style={styles.modalDoneText}>Done</Text>
             </Pressable>
           </Pressable>
@@ -384,7 +394,12 @@ export default function SettingsScreen() {
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <Pressable
-          style={[styles.primaryButton, (!canSave || isSaving) && styles.buttonDisabled]}
+          android_ripple={ANDROID_RIPPLE_PRIMARY}
+          style={({ pressed }) => [
+            styles.primaryButton,
+            (!canSave || isSaving) && styles.buttonDisabled,
+            primarySolidPressStyle(pressed, !canSave || isSaving),
+          ]}
           onPress={save}
           disabled={!canSave || isSaving}>
           {isSaving ? (

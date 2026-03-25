@@ -12,6 +12,10 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import {
+  ANDROID_RIPPLE_PRIMARY,
+  primarySolidPressStyle,
+} from '@/src/components/ui/interaction';
 import { supportedLanguages } from '@/src/constants/languages';
 import { OnboardingStepChrome } from '@/src/features/onboarding/components/OnboardingStepChrome';
 import { useOnboardingDraft } from '@/src/features/onboarding/OnboardingProvider';
@@ -173,10 +177,12 @@ export default function OnboardingLanguagePairScreen() {
 
           <Pressable
             onPress={() => router.push('/(onboarding)/level')}
-            style={[
+            android_ripple={ANDROID_RIPPLE_PRIMARY}
+            style={({ pressed }) => [
               styles.primaryButton,
               { marginBottom: Math.max(insets.bottom, 10) },
               !canContinue && styles.primaryButtonDisabled,
+              primarySolidPressStyle(pressed, !canContinue),
             ]}
             disabled={!canContinue}>
             <Text style={styles.primaryButtonText}>Continue</Text>

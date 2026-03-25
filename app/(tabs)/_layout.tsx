@@ -13,6 +13,7 @@ export default function TabLayout() {
       screenOptions={{
         tabBarActiveTintColor: Colors[colorScheme].tint,
         tabBarInactiveTintColor: Colors[colorScheme].tabIconDefault,
+        tabBarHideOnKeyboard: true,
         tabBarStyle: {
           backgroundColor: colorScheme === 'dark' ? '#121418' : StitchColors.surfaceContainerLowest,
           borderTopColor: StitchColors.surfaceContainer,

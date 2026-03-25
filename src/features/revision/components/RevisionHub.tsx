@@ -11,6 +11,12 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ScreenHeader } from "@/src/components/layout/ScreenHeader";
+import {
+  ANDROID_RIPPLE_PRIMARY,
+  ANDROID_RIPPLE_SURFACE,
+  primarySolidPressStyle,
+  surfacePressStyle,
+} from "@/src/components/ui/interaction";
 import { cefrLevels, type CefrLevel } from "@/src/types/cefr";
 import type { RevisionSessionConfig } from "@/src/types/revisionSession";
 import { StitchColors } from "@/src/theme/wordlyStitchTheme";
@@ -189,7 +195,12 @@ export function RevisionHub({
         <View style={styles.hubBentoWrap}>
           <View style={styles.hubTileFull}>
             <Pressable
-              style={[styles.hubCardWhite, styles.hubDailyFeatured]}
+              android_ripple={ANDROID_RIPPLE_SURFACE}
+              style={({ pressed }) => [
+                styles.hubCardWhite,
+                styles.hubDailyFeatured,
+                surfacePressStyle(pressed, false),
+              ]}
               onPress={() => openSheet({ type: "daily" })}
               accessibilityRole="button"
               accessibilityLabel="Daily Review"
@@ -221,7 +232,11 @@ export function RevisionHub({
 
           <View style={styles.hubTileFull}>
             <Pressable
-              style={styles.hubCardWhite}
+              android_ripple={ANDROID_RIPPLE_SURFACE}
+              style={({ pressed }) => [
+                styles.hubCardWhite,
+                surfacePressStyle(pressed, false),
+              ]}
               onPress={() => openQuickSheet()}
               accessibilityRole="button"
               accessibilityLabel="Quick Practice"
@@ -256,7 +271,11 @@ export function RevisionHub({
 
           <View style={styles.hubTileFull}>
             <Pressable
-              style={styles.hubCardWhite}
+              android_ripple={ANDROID_RIPPLE_SURFACE}
+              style={({ pressed }) => [
+                styles.hubCardWhite,
+                surfacePressStyle(pressed, false),
+              ]}
               onPress={() => openSheet({ type: "difficult" })}
             >
               <View
@@ -287,7 +306,11 @@ export function RevisionHub({
 
           <View style={styles.hubTileFull}>
             <Pressable
-              style={styles.hubCardWhite}
+              android_ripple={ANDROID_RIPPLE_SURFACE}
+              style={({ pressed }) => [
+                styles.hubCardWhite,
+                surfacePressStyle(pressed, false),
+              ]}
               onPress={() => openSheet({ type: "recent" })}
             >
               <View
@@ -322,7 +345,11 @@ export function RevisionHub({
 
           <View style={styles.hubTileFull}>
             <Pressable
-              style={styles.hubCardWhite}
+              android_ripple={ANDROID_RIPPLE_SURFACE}
+              style={({ pressed }) => [
+                styles.hubCardWhite,
+                surfacePressStyle(pressed, false),
+              ]}
               onPress={() => openSheet({ type: "level" })}
               accessibilityRole="button"
               accessibilityLabel="Level Practice"
@@ -407,10 +434,12 @@ export function RevisionHub({
                       {QUICK_SIZES.map((n) => (
                         <Pressable
                           key={n}
-                          style={[
+                          android_ripple={ANDROID_RIPPLE_SURFACE}
+                          style={({ pressed }) => [
                             styles.hubQuickSegment,
                             quickCount === n && styles.hubQuickSegmentSelected,
                             !canPractice && styles.buttonDisabled,
+                            surfacePressStyle(pressed, !canPractice),
                           ]}
                           disabled={!canPractice}
                           onPress={() => setQuickCount(n)}
@@ -440,10 +469,12 @@ export function RevisionHub({
                       ))}
                     </View>
                     <Pressable
-                      style={[
+                      android_ripple={ANDROID_RIPPLE_PRIMARY}
+                      style={({ pressed }) => [
                         styles.hubStartSessionBtn,
                         styles.hubSessionSheetPrimary,
-                        (!canPractice) && styles.buttonDisabled,
+                        !canPractice && styles.buttonDisabled,
+                        primarySolidPressStyle(pressed, !canPractice),
                       ]}
                       disabled={!canPractice}
                       onPress={commitSession}
@@ -470,9 +501,11 @@ export function RevisionHub({
                           return (
                             <Pressable
                               key={level}
-                              style={[
+                              android_ripple={ANDROID_RIPPLE_SURFACE}
+                              style={({ pressed }) => [
                                 styles.hubLevelGridCell,
                                 disabled && styles.hubLevelGridCellDisabled,
+                                surfacePressStyle(pressed, disabled),
                               ]}
                               disabled={disabled}
                               onPress={() => {
@@ -506,7 +539,12 @@ export function RevisionHub({
                 sheet.type !== "quick" &&
                 sheet.type !== "level" ? (
                   <Pressable
-                    style={[styles.hubStartSessionBtn, styles.hubSessionSheetPrimary]}
+                    android_ripple={ANDROID_RIPPLE_PRIMARY}
+                    style={({ pressed }) => [
+                      styles.hubStartSessionBtn,
+                      styles.hubSessionSheetPrimary,
+                      primarySolidPressStyle(pressed, false),
+                    ]}
                     onPress={commitSession}
                     accessibilityRole="button"
                     accessibilityLabel="Start session"

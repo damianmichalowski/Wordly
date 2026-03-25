@@ -4,6 +4,11 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
+  ANDROID_RIPPLE_ICON_ROUND,
+  HIT_SLOP_COMFORT,
+  roundIconPressStyle,
+} from "@/src/components/ui/interaction";
+import {
   StitchColors,
   StitchFonts,
   StitchRadius,
@@ -44,8 +49,12 @@ export function ScreenHeader({
         {onBackPress ? (
           <Pressable
             onPress={onBackPress}
-            style={styles.backBtn}
-            hitSlop={12}
+            android_ripple={ANDROID_RIPPLE_ICON_ROUND}
+            style={({ pressed }) => [
+              styles.backBtn,
+              roundIconPressStyle(pressed, false),
+            ]}
+            hitSlop={HIT_SLOP_COMFORT}
             accessibilityRole="button"
             accessibilityLabel={backAccessibilityLabel}
           >

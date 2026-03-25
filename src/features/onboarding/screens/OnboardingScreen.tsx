@@ -10,6 +10,12 @@ import {
 } from '@/src/services/auth/socialAuth';
 import { getAuthenticatedUserId } from '@/src/services/auth/ensureSession';
 import { isOnboardingComplete } from '@/src/services/storage/onboardingStorage';
+import {
+  ANDROID_RIPPLE_PRIMARY,
+  ANDROID_RIPPLE_SURFACE,
+  primarySolidPressStyle,
+  surfacePressStyle,
+} from '@/src/components/ui/interaction';
 import { StitchColors, StitchFonts, StitchRadius } from '@/src/theme/wordlyStitchTheme';
 
 export default function OnboardingScreen() {
@@ -82,7 +88,12 @@ export default function OnboardingScreen() {
       </Text>
 
       <Pressable
-        style={[styles.primaryButton, busy && styles.buttonDisabled]}
+        android_ripple={ANDROID_RIPPLE_PRIMARY}
+        style={({ pressed }) => [
+          styles.primaryButton,
+          busy && styles.buttonDisabled,
+          primarySolidPressStyle(pressed, busy),
+        ]}
         onPress={onGoogle}
         disabled={busy}
       >
@@ -95,7 +106,12 @@ export default function OnboardingScreen() {
 
       {Platform.OS === 'ios' && appleAvailable ? (
         <Pressable
-          style={[styles.appleButton, busy && styles.buttonDisabled]}
+          android_ripple={ANDROID_RIPPLE_SURFACE}
+          style={({ pressed }) => [
+            styles.appleButton,
+            busy && styles.buttonDisabled,
+            surfacePressStyle(pressed, busy),
+          ]}
           onPress={onApple}
           disabled={busy}
         >

@@ -99,6 +99,12 @@ export const revisionScreenStyles = StyleSheet.create({
     borderRadius: StitchRadius.lg,
     paddingHorizontal: 12,
     paddingVertical: 10,
+    borderWidth: 2,
+    borderColor: "transparent",
+  },
+  filtersSearchFieldFocused: {
+    borderColor: `${StitchColors.primary}55`,
+    backgroundColor: StitchColors.surfaceContainerLowest,
   },
   filtersSearchInputCompact: {
     flex: 1,
@@ -213,7 +219,7 @@ export const revisionScreenStyles = StyleSheet.create({
     borderRadius: StitchRadius.md,
     paddingVertical: 18,
     paddingHorizontal: 16,
-    marginBottom: 14,
+    marginBottom: 16,
     shadowColor: StitchColors.onSurface,
     shadowOpacity: 0.04,
     shadowRadius: 8,

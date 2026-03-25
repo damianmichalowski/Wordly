@@ -5,7 +5,7 @@ import type { WidgetSurfaceSnapshot } from '@/src/types/widgets';
 /**
  * Zapisuje snapshot „w trakcie ładowania” do App Group i przeładowuje timeline widgecie
  * (natywnie: `WidgetCenter.shared.reloadTimelines`).
- * Używaj przed `applyDailyWordAction(..., 'known' | 'skip')` / długim odświeżeniem słowa.
+ * Używaj przed `applyDailyWordAction()` / długim odświeżeniem słowa.
  */
 export async function syncWidgetLoadingSnapshot(): Promise<void> {
   try {

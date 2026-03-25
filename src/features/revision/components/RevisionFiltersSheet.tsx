@@ -18,6 +18,16 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
+  ANDROID_RIPPLE_ICON_ROUND,
+  ANDROID_RIPPLE_PRIMARY,
+  ANDROID_RIPPLE_SURFACE,
+  HIT_SLOP_COMFORT,
+  linkPressStyle,
+  primarySolidPressStyle,
+  roundIconPressStyle,
+  surfacePressStyle,
+} from "@/src/components/ui/interaction";
+import {
   DEFAULT_REVISION_SORT_PREFS,
   type RevisionSortPrefs,
 } from "@/src/services/revision/revisionSortPrefs";
@@ -168,7 +178,11 @@ export function RevisionFiltersSheet({
         <View style={s.sheet}>
           <View style={s.handle} />
           <View style={s.header}>
-            <Pressable onPress={resetDraft} hitSlop={12}>
+            <Pressable
+              onPress={resetDraft}
+              hitSlop={HIT_SLOP_COMFORT}
+              style={({ pressed }) => linkPressStyle(pressed, false)}
+            >
               <Text style={s.headerBtnText}>Reset</Text>
             </Pressable>
             <Text style={s.headerTitle} numberOfLines={1}>
@@ -176,7 +190,8 @@ export function RevisionFiltersSheet({
             </Text>
             <Pressable
               onPress={onClose}
-              style={s.closeBtn}
+              android_ripple={ANDROID_RIPPLE_ICON_ROUND}
+              style={({ pressed }) => [s.closeBtn, roundIconPressStyle(pressed, false)]}
               accessibilityRole="button"
               accessibilityLabel="Zamknij"
             >
@@ -203,7 +218,12 @@ export function RevisionFiltersSheet({
                       <Pressable
                         key={level}
                         onPress={() => toggleLevel(level)}
-                        style={[s.levelChip, on && s.levelChipOn]}
+                        android_ripple={ANDROID_RIPPLE_SURFACE}
+                        style={({ pressed }) => [
+                          s.levelChip,
+                          on && s.levelChipOn,
+                          surfacePressStyle(pressed, false),
+                        ]}
                         accessibilityRole="button"
                         accessibilityState={{ selected: on }}
                       >
@@ -236,7 +256,11 @@ export function RevisionFiltersSheet({
                     />
                     <View style={s.dateSegmentLabelsRow}>
                       <Pressable
-                        style={s.dateSegmentHalf}
+                        android_ripple={ANDROID_RIPPLE_SURFACE}
+                        style={({ pressed }) => [
+                          s.dateSegmentHalf,
+                          surfacePressStyle(pressed, false),
+                        ]}
                         onPress={() => setTimeOrder("newest")}
                         accessibilityRole="button"
                         accessibilityState={{ selected: timeOrder === "newest" }}
@@ -251,7 +275,11 @@ export function RevisionFiltersSheet({
                         </Text>
                       </Pressable>
                       <Pressable
-                        style={s.dateSegmentHalf}
+                        android_ripple={ANDROID_RIPPLE_SURFACE}
+                        style={({ pressed }) => [
+                          s.dateSegmentHalf,
+                          surfacePressStyle(pressed, false),
+                        ]}
                         onPress={() => setTimeOrder("oldest")}
                         accessibilityRole="button"
                         accessibilityState={{ selected: timeOrder === "oldest" }}
@@ -276,9 +304,11 @@ export function RevisionFiltersSheet({
               <View style={s.sortLevelGrid}>
                 <Pressable
                   onPress={toggleCefrAsc}
-                  style={[
+                  android_ripple={ANDROID_RIPPLE_SURFACE}
+                  style={({ pressed }) => [
                     s.sortLevelCell,
                     draft.sortPrefs.cefrOrder === "asc" && s.sortLevelCellOn,
+                    surfacePressStyle(pressed, false),
                   ]}
                 >
                   <Text
@@ -303,9 +333,11 @@ export function RevisionFiltersSheet({
                 </Pressable>
                 <Pressable
                   onPress={toggleCefrDesc}
-                  style={[
+                  android_ripple={ANDROID_RIPPLE_SURFACE}
+                  style={({ pressed }) => [
                     s.sortLevelCell,
                     draft.sortPrefs.cefrOrder === "desc" && s.sortLevelCellOn,
+                    surfacePressStyle(pressed, false),
                   ]}
                 >
                   <Text
@@ -333,7 +365,14 @@ export function RevisionFiltersSheet({
           </ScrollView>
 
           <View style={[s.footer, { paddingBottom: 12 + insets.bottom }]}>
-            <Pressable style={s.applyBtn} onPress={apply}>
+            <Pressable
+              android_ripple={ANDROID_RIPPLE_PRIMARY}
+              style={({ pressed }) => [
+                s.applyBtn,
+                primarySolidPressStyle(pressed, false),
+              ]}
+              onPress={apply}
+            >
               <Text style={s.applyBtnText}>Zastosuj filtry</Text>
             </Pressable>
           </View>

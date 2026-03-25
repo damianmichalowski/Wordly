@@ -10,9 +10,15 @@ import {
 } from "@/src/services/revision/revisionModeFilters";
 import {
   fetchKnownWordsRevisionBundle,
+  loadKnownWordsRevisionBundleFromRemote,
   markWordReviewed,
   removeFromKnown as removeFromKnownStorage,
-} from "@/src/services/revision/revisionService";
+} from "@/src/services/knownWordsService";
+import {
+  ensureRevisionProgressFlushOnBackground,
+  flushRevisionReviewProgressBatches,
+} from "@/src/services/revision/revisionSessionProgressSync";
+import { getKnownWordsBundleCache } from "@/src/cache/knownWordsCache";
 import { sortKnownWordsForRevision } from "@/src/services/revision/revisionSort";
 import {
   DEFAULT_REVISION_SORT_PREFS,
@@ -21,6 +27,7 @@ import {
   type RevisionSortPrefs,
 } from "@/src/services/revision/revisionSortPrefs";
 import { getUserProfile } from "@/src/services/storage/profileStorage";
+import { LogTag, logger } from "@/src/utils/logger";
 import { shuffleArray } from "@/src/utils/shuffleArray";
 import { cefrLevels, type CefrLevel } from "@/src/types/cefr";
 import type {
@@ -47,6 +54,49 @@ type RevisionBundle = {
   words: VocabularyWord[];
   progressByWordId: Record<string, UserWordProgress>;
 };
+
+/**
+ * When the known-words bundle changes while flashcards are open, refresh card
+ * payloads from the bundle but do **not** re-run {@link buildSessionWordList}.
+ * Re-building session filters after a review (e.g. Daily “due today”) can drop
+ * the current sense_id and change `index`, so „Pokaż tłumaczenie” looked like
+ * it jumped to another word.
+ *
+ * Only words still present in `bundle.words` stay in the deck; order is kept;
+ * `index` follows the same sense_id when possible.
+ */
+function flashcardAdjustmentsForBundleChange(
+  prev: RevisionState,
+  bundle: RevisionBundle,
+): Partial<RevisionState> {
+  if (prev.mode !== "flashcards") {
+    return {};
+  }
+  const wordById = new Map(bundle.words.map((w) => [w.id, w]));
+  const resynced = prev.flashDeck
+    .filter((w) => wordById.has(w.id))
+    .map((w) => wordById.get(w.id)!);
+  if (resynced.length === 0) {
+    return {
+      mode: "list",
+      flashDeck: [],
+      index: 0,
+      isFlipped: false,
+    };
+  }
+  const currentId = prev.flashDeck[prev.index]?.id;
+  let newIndex = Math.min(prev.index, resynced.length - 1);
+  if (currentId !== undefined) {
+    const pos = resynced.findIndex((w) => w.id === currentId);
+    if (pos >= 0) {
+      newIndex = pos;
+    }
+  }
+  return {
+    flashDeck: resynced,
+    index: newIndex,
+  };
+}
 
 type RevisionState = {
   isLoading: boolean;
@@ -92,6 +142,32 @@ export function useRevision(options?: UseRevisionOptions) {
       setState((prev) => ({ ...prev, sortPrefs: prefs })),
     );
   }, []);
+
+  const revisionOpenedLogged = useRef(false);
+  useEffect(() => {
+    if (state.isLoading || !state.profile || revisionOpenedLogged.current) {
+      return;
+    }
+    revisionOpenedLogged.current = true;
+    logger.info(LogTag.REVISION, `Revision mode opened (variant=${variant})`);
+  }, [state.isLoading, state.profile, variant]);
+
+  const flashDeckSigLogged = useRef<string>("");
+  useEffect(() => {
+    if (state.mode !== "flashcards" || state.flashDeck.length === 0) {
+      return;
+    }
+    const sig = state.flashDeck.map((w) => w.id).join("|");
+    if (flashDeckSigLogged.current === sig) {
+      return;
+    }
+    flashDeckSigLogged.current = sig;
+    logger.info(LogTag.REVISION, "Loading flashcard set");
+    logger.info(
+      LogTag.REVISION,
+      `Flashcard set size: ${state.flashDeck.length}`,
+    );
+  }, [state.mode, state.flashDeck]);
 
   const knownWords = useMemo(() => {
     if (!state.revisionBundle) {
@@ -184,60 +260,85 @@ export function useRevision(options?: UseRevisionOptions) {
       return;
     }
 
-    const bundle = await fetchKnownWordsRevisionBundle(profile);
+    const cached = await getKnownWordsBundleCache(profile.userId, {
+      silent: true,
+    });
 
-    setState((prev) => {
-      if (prev.mode === "flashcards") {
-        const deckSource =
-          prev.sessionPhase === "session" && prev.sessionConfig
-            ? buildSessionWordList(
-                bundle,
-                prev.sessionConfig,
-                prev.sortPrefs,
-              )
-            : sortKnownWordsForRevision(
-                bundle.words,
-                bundle.progressByWordId,
-                prev.sortPrefs,
-              );
-        const filtered = prev.flashDeck.filter((w) =>
-          deckSource.some((k) => k.id === w.id),
-        );
-        if (filtered.length === 0) {
-          return {
-            ...prev,
-            isLoading: false,
-            profile,
-            revisionBundle: bundle,
-            mode: "list",
-            flashDeck: [],
-            index: 0,
-            isFlipped: false,
-          };
-        }
-        const newIndex = Math.min(prev.index, filtered.length - 1);
-        return {
-          ...prev,
-          isLoading: false,
-          profile,
-          revisionBundle: bundle,
-          flashDeck: filtered,
-          index: newIndex,
-        };
-      }
-
-      return {
+    if (cached) {
+      const bundle: RevisionBundle = {
+        words: cached.words,
+        progressByWordId: cached.progressByWordId,
+      };
+      logger.info(
+        LogTag.REVISION_HUB,
+        `Loaded known words from local cache (${bundle.words.length} words)`,
+      );
+      setState((prev) => ({
         ...prev,
         isLoading: false,
         profile,
         revisionBundle: bundle,
-      };
-    });
+        ...flashcardAdjustmentsForBundleChange(prev, bundle),
+      }));
+      logger.info(LogTag.REVISION_HUB, "Recomputed mode stats locally");
+
+      void (async () => {
+        try {
+          await flushRevisionReviewProgressBatches(profile.userId);
+          const fresh = await loadKnownWordsRevisionBundleFromRemote(profile);
+          const freshBundle: RevisionBundle = {
+            words: fresh.words,
+            progressByWordId: fresh.progressByWordId,
+          };
+          logger.info(
+            LogTag.REVISION_HUB,
+            `Background canonical sync complete (${freshBundle.words.length} words)`,
+          );
+          setState((prev) => {
+            if (prev.profile?.userId !== profile.userId) {
+              return prev;
+            }
+            return {
+              ...prev,
+              revisionBundle: freshBundle,
+              ...flashcardAdjustmentsForBundleChange(prev, freshBundle),
+            };
+          });
+        } catch (e) {
+          logger.warn(
+            LogTag.REVISION_HUB,
+            "Background known-words sync failed (local cache unchanged)",
+            e,
+          );
+        }
+      })();
+      return;
+    }
+
+    logger.info(
+      LogTag.REVISION_HUB,
+      "No local bundle — blocking fetch from Supabase (first run)",
+    );
+    await flushRevisionReviewProgressBatches(profile.userId);
+    const bundle = await fetchKnownWordsRevisionBundle(profile);
+
+    setState((prev) => ({
+      ...prev,
+      isLoading: false,
+      profile,
+      revisionBundle: bundle,
+      ...flashcardAdjustmentsForBundleChange(prev, bundle),
+    }));
+    logger.info(LogTag.REVISION_HUB, "Recomputed mode stats locally");
   }, [resetPhase]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    ensureRevisionProgressFlushOnBackground();
+  }, []);
 
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener(PROFILE_SETTINGS_SAVED, () => {
@@ -248,10 +349,40 @@ export function useRevision(options?: UseRevisionOptions) {
 
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener(WORD_PROGRESS_UPDATED, () => {
-      void refresh();
+      void (async () => {
+        const profile = await getUserProfile();
+        if (!profile) {
+          return;
+        }
+        const cached = await getKnownWordsBundleCache(profile.userId, {
+          silent: true,
+        });
+        if (!cached) {
+          return;
+        }
+        logger.info(
+          LogTag.REVISION_HUB,
+          "Known words updated — refreshing in-memory revision bundle from local cache",
+        );
+        const bundle: RevisionBundle = {
+          words: cached.words,
+          progressByWordId: cached.progressByWordId,
+        };
+        setState((prev) => {
+          if (!prev.profile || prev.profile.userId !== profile.userId) {
+            return prev;
+          }
+          return {
+            ...prev,
+            revisionBundle: bundle,
+            ...flashcardAdjustmentsForBundleChange(prev, bundle),
+          };
+        });
+        logger.info(LogTag.REVISION_HUB, "Recomputed mode stats locally");
+      })();
     });
     return () => sub.remove();
-  }, [refresh]);
+  }, []);
 
   const setRevisionSortPrefs = useCallback((prefs: RevisionSortPrefs) => {
     setState((prev) => ({ ...prev, sortPrefs: prefs }));
@@ -290,8 +421,16 @@ export function useRevision(options?: UseRevisionOptions) {
   }, []);
 
   const enterSession = useCallback((config: RevisionSessionConfig) => {
+    logger.info(
+      LogTag.REVISION_SESSION,
+      `Building session from local known words (mode=${config.kind})`,
+    );
     setState((prev) => {
       if (!prev.revisionBundle) {
+        logger.warn(
+          LogTag.REVISION_SESSION,
+          "Cannot start session — revision bundle not loaded yet",
+        );
         return {
           ...prev,
           sessionPhase: "session",
@@ -308,6 +447,7 @@ export function useRevision(options?: UseRevisionOptions) {
         prev.sortPrefs,
       );
       if (words.length === 0) {
+        logger.info(LogTag.REVISION_SESSION, "Session created with 0 cards");
         return {
           ...prev,
           sessionPhase: "session",
@@ -318,6 +458,10 @@ export function useRevision(options?: UseRevisionOptions) {
           isFlipped: false,
         };
       }
+      logger.info(
+        LogTag.REVISION_SESSION,
+        `Session created with ${words.length} cards`,
+      );
       return {
         ...prev,
         sessionPhase: "session",
@@ -331,6 +475,7 @@ export function useRevision(options?: UseRevisionOptions) {
   }, []);
 
   const exitSessionToHub = useCallback(() => {
+    void flushRevisionReviewProgressBatches();
     setState((prev) => ({
       ...prev,
       sessionPhase: "hub",
@@ -373,6 +518,7 @@ export function useRevision(options?: UseRevisionOptions) {
   }, []);
 
   const exitFlashcards = useCallback(() => {
+    void flushRevisionReviewProgressBatches();
     setState((prev) => {
       const fromHubSession =
         variantRef.current === "hub" && prev.sessionPhase === "session";
@@ -388,7 +534,7 @@ export function useRevision(options?: UseRevisionOptions) {
     });
   }, []);
 
-  const flip = useCallback(async () => {
+  const flip = useCallback(() => {
     if (state.mode !== "flashcards" || !activeCard) {
       return;
     }
@@ -397,7 +543,11 @@ export function useRevision(options?: UseRevisionOptions) {
     setState((prev) => ({ ...prev, isFlipped: nextFlipped }));
 
     if (!state.isFlipped) {
-      await markWordReviewed(activeCard.id);
+      logger.info(
+        LogTag.REVISION_SESSION,
+        `Reveal translation (local), sense_id=${activeCard.id}`,
+      );
+      void markWordReviewed(activeCard.id);
     }
   }, [state.mode, state.isFlipped, activeCard]);
 

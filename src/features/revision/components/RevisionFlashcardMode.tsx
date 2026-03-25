@@ -9,6 +9,18 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import {
+  ANDROID_RIPPLE_ICON_ROUND,
+  ANDROID_RIPPLE_MUTED,
+  ANDROID_RIPPLE_PRIMARY,
+  ANDROID_RIPPLE_SURFACE,
+  HIT_SLOP_COMFORT,
+  HIT_SLOP_MINI,
+  linkPressStyle,
+  primarySolidPressStyle,
+  roundIconPressStyle,
+  surfacePressStyle,
+} from "@/src/components/ui/interaction";
 import { FormattedTranslationGlosses } from "@/src/components/vocabulary/FormattedTranslationGlosses";
 import { homeWordCardStyles } from "@/src/features/dailyWord/homeWordCardStyles";
 import {
@@ -19,6 +31,7 @@ import { fetchExternalUsageExamples } from "@/src/services/examples/externalUsag
 import { sentenceExampleHomeStyles } from "@/src/theme/sentenceExampleStyles";
 import { StitchColors } from "@/src/theme/wordlyStitchTheme";
 import type { VocabularyWord } from "@/src/types/words";
+import { LogTag, logger } from "@/src/utils/logger";
 
 import { revisionScreenStyles as styles } from "../revisionScreenStyles";
 
@@ -76,6 +89,10 @@ export function RevisionFlashcardMode({
     let cancelled = false;
     setLoadingOnlineExamples(true);
     setOnlineExamples(null);
+    logger.info(
+      LogTag.REVISION_SESSION,
+      `Background enrichment started (examples, sense_id=${activeCard.id})`,
+    );
     void fetchExternalUsageExamples({
       lemma: activeCard.sourceText,
       sourceLanguageCode: activeCard.sourceLanguageCode,
@@ -101,7 +118,14 @@ export function RevisionFlashcardMode({
         ]}
       >
         <Text style={styles.title}>Brak słów</Text>
-        <Pressable style={styles.primaryButton} onPress={exitFlashcards}>
+        <Pressable
+          android_ripple={ANDROID_RIPPLE_PRIMARY}
+          style={({ pressed }) => [
+            styles.primaryButton,
+            primarySolidPressStyle(pressed, false),
+          ]}
+          onPress={exitFlashcards}
+        >
           <Text style={styles.primaryButtonText}>Wróć</Text>
         </Pressable>
       </View>
@@ -175,10 +199,13 @@ export function RevisionFlashcardMode({
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel="Odsłuchaj wymowę"
-                    style={[
+                    android_ripple={ANDROID_RIPPLE_ICON_ROUND}
+                    hitSlop={HIT_SLOP_MINI}
+                    style={({ pressed }) => [
                       homeWordCardStyles.roundIconButton,
                       !canPronounce(activeCard) &&
                         homeWordCardStyles.buttonDisabled,
+                      roundIconPressStyle(pressed, !canPronounce(activeCard)),
                     ]}
                     onPress={() => speakWord(activeCard)}
                     disabled={!canPronounce(activeCard)}
@@ -205,9 +232,13 @@ export function RevisionFlashcardMode({
 
                 {!translationRevealed ? (
                   <Pressable
-                    style={styles.revealTranslationPrimary}
+                    android_ripple={ANDROID_RIPPLE_PRIMARY}
+                    style={({ pressed }) => [
+                      styles.revealTranslationPrimary,
+                      primarySolidPressStyle(pressed, false),
+                    ]}
                     onPress={flip}
-                    hitSlop={8}
+                    hitSlop={HIT_SLOP_COMFORT}
                     accessibilityRole="button"
                     accessibilityLabel="Pokaż tłumaczenie"
                   >
@@ -277,9 +308,13 @@ export function RevisionFlashcardMode({
                     </View>
 
                     <Pressable
-                      style={styles.revealHideLink}
+                      android_ripple={ANDROID_RIPPLE_SURFACE}
+                      style={({ pressed }) => [
+                        styles.revealHideLink,
+                        linkPressStyle(pressed, false),
+                      ]}
                       onPress={flip}
-                      hitSlop={8}
+                      hitSlop={HIT_SLOP_COMFORT}
                       accessibilityRole="button"
                       accessibilityLabel="Ukryj tłumaczenie"
                     >
@@ -302,19 +337,25 @@ export function RevisionFlashcardMode({
         ]}
       >
         <Pressable
-          style={styles.flashNavClose}
+          android_ripple={ANDROID_RIPPLE_MUTED}
+          style={({ pressed }) => [
+            styles.flashNavClose,
+            surfacePressStyle(pressed, false),
+          ]}
           onPress={exitFlashcards}
-          hitSlop={12}
+          hitSlop={HIT_SLOP_COMFORT}
           accessibilityRole="button"
           accessibilityLabel="Zamknij powtórkę"
         >
           <Ionicons name="close" size={24} color={StitchColors.error} />
         </Pressable>
         <Pressable
-          style={[
+          android_ripple={ANDROID_RIPPLE_SURFACE}
+          style={({ pressed }) => [
             styles.flashNavButton,
             styles.flashNavPrev,
             isFirstCard && styles.flashNavPrevDisabled,
+            surfacePressStyle(pressed, isFirstCard),
           ]}
           onPress={previous}
           disabled={isFirstCard}
@@ -330,7 +371,12 @@ export function RevisionFlashcardMode({
           <Text style={styles.flashNavPrevText}>Wstecz</Text>
         </Pressable>
         <Pressable
-          style={[styles.flashNavButton, styles.flashNavNext]}
+          android_ripple={ANDROID_RIPPLE_PRIMARY}
+          style={({ pressed }) => [
+            styles.flashNavButton,
+            styles.flashNavNext,
+            primarySolidPressStyle(pressed, false),
+          ]}
           onPress={isLastCard ? exitFlashcards : next}
           accessibilityLabel={
             isLastCard ? "Zakończ sesję powtórki" : "Następne słowo"

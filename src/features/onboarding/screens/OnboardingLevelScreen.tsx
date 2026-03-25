@@ -15,6 +15,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supportedLanguages } from '@/src/constants/languages';
 import { CEFR_TILE_COPY, RECOMMENDED_LEVEL } from '@/src/features/onboarding/cefrLevelCopy';
 import { completeOnboardingFromDraft } from '@/src/features/onboarding/completeOnboarding';
+import {
+  ANDROID_RIPPLE_PRIMARY,
+  primarySolidPressStyle,
+} from '@/src/components/ui/interaction';
 import { OnboardingStepChrome } from '@/src/features/onboarding/components/OnboardingStepChrome';
 import { useOnboardingDraft } from '@/src/features/onboarding/OnboardingProvider';
 import { useAppBootstrap } from '@/src/hooks/useAppBootstrap';
@@ -82,10 +86,12 @@ export default function OnboardingLevelScreen() {
         </ScrollView>
 
         <Pressable
-          style={[
+          android_ripple={ANDROID_RIPPLE_PRIMARY}
+          style={({ pressed }) => [
             styles.primaryButton,
             { marginBottom: Math.max(insets.bottom, 10) },
             finishing && styles.primaryButtonDisabled,
+            primarySolidPressStyle(pressed, finishing),
           ]}
           onPress={finish}
           disabled={finishing}>

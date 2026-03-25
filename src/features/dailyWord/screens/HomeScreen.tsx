@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
     ActivityIndicator,
     Alert,
@@ -14,8 +14,16 @@ import {
 import { ScreenHeader } from "@/src/components/layout/ScreenHeader";
 import { FormattedTranslationGlosses } from "@/src/components/vocabulary/FormattedTranslationGlosses";
 import { CenteredMessageCta } from "@/src/components/ui/CenteredMessageCta";
+import {
+    ANDROID_RIPPLE_ICON_ROUND,
+    ANDROID_RIPPLE_PRIMARY,
+    HIT_SLOP_MINI,
+    primarySolidPressStyle,
+    roundIconPressStyle,
+} from "@/src/components/ui/interaction";
 import { homeWordCardStyles } from "@/src/features/dailyWord/homeWordCardStyles";
-import { useDailyWord } from "@/src/features/dailyWord/useDailyWord";
+import { toVisibleCardWordForTranslation } from "@/src/features/dailyWord/visibleCardTranslations";
+import { useCurrentWord } from "@/src/hooks/useCurrentWord";
 import {
     canPronounce,
     speakWord,
@@ -27,6 +35,7 @@ import {
   StitchFonts,
   StitchRadius,
 } from "@/src/theme/wordlyStitchTheme";
+import { LogTag, logger } from "@/src/utils/logger";
 
 const styles = StyleSheet.create({
   screen: {
@@ -85,20 +94,6 @@ const styles = StyleSheet.create({
     fontFamily: StitchFonts.bodySemi,
     fontSize: 17,
   },
-  skipButton: {
-    borderRadius: StitchRadius.xl,
-    paddingVertical: 16,
-    alignItems: "center",
-    width: "100%",
-    borderWidth: 1,
-    borderColor: StitchColors.surfaceContainerHigh,
-    backgroundColor: StitchColors.surfaceContainerLowest,
-  },
-  skipButtonText: {
-    color: StitchColors.onSurface,
-    fontFamily: StitchFonts.bodySemi,
-    fontSize: 16,
-  },
 });
 
 export default function HomeScreen() {
@@ -111,22 +106,45 @@ export default function HomeScreen() {
     snapshot,
     canAct,
     markKnown,
-    skipWord,
-  } = useDailyWord();
+  } = useCurrentWord();
   const [onlineExamples, setOnlineExamples] = useState<
     { source: string }[] | null
   >(null);
   const [loadingOnlineExamples, setLoadingOnlineExamples] = useState(false);
   const lastLevelAlertKey = useRef<string | null>(null);
+  const wordScreenOpenedLogged = useRef(false);
+  /** Invalidates in-flight external example fetch when sense changes or effect re-runs (Strict Mode). */
+  const externalExamplesGenRef = useRef(0);
+
+  useEffect(() => {
+    if (wordScreenOpenedLogged.current) {
+      return;
+    }
+    wordScreenOpenedLogged.current = true;
+    logger.info(LogTag.WORD_FLOW, "Screen opened (Word of the Day)");
+  }, []);
 
   const activeWord = snapshot?.activeWord;
+  const visibleSenseIdRef = useRef<string | null>(null);
+  visibleSenseIdRef.current = activeWord?.id ?? null;
+
+  /** Strictly sense-scoped translations for the focal card (never unfiltered batch lemma lists). */
+  const visibleWordForTranslation = useMemo(() => {
+    if (!activeWord) {
+      return null;
+    }
+    return toVisibleCardWordForTranslation(activeWord);
+  }, [activeWord]);
 
   useEffect(() => {
     setOnlineExamples(null);
     setLoadingOnlineExamples(false);
   }, [activeWord?.id]);
 
-  /** Przykłady z sieci (EN): ładujemy od razu przy słowie bez przykładu w bazie. */
+  /**
+   * Przykłady z sieci (EN) gdy brak w bazie. Latencja zależy od sieci i zewnętrznych API
+   * (Free Dictionary + Tatoeba); brak timeoutu w fetch — długi spinner = wolna odpowiedź lub brak sieci.
+   */
   useEffect(() => {
     if (!activeWord) {
       return;
@@ -142,23 +160,63 @@ export default function HomeScreen() {
       return;
     }
     let cancelled = false;
+    const gen = (externalExamplesGenRef.current += 1);
+    const requestSenseId = activeWord.id;
     setLoadingOnlineExamples(true);
     setOnlineExamples(null);
+    const tExamples = Date.now();
     void fetchExternalUsageExamples({
       lemma: activeWord.sourceText,
       sourceLanguageCode: activeWord.sourceLanguageCode,
       targetLanguageCode: activeWord.targetLanguageCode,
-    }).then((rows) => {
-      if (!cancelled) {
+    })
+      .then((rows) => {
+        if (cancelled) {
+          return;
+        }
+        if (gen !== externalExamplesGenRef.current) {
+          return;
+        }
+        if (visibleSenseIdRef.current !== requestSenseId) {
+          return;
+        }
+        logger.perf(
+          "external-usage-examples",
+          Date.now() - tExamples,
+          `count=${rows.length}`,
+        );
         setOnlineExamples(rows);
         setLoadingOnlineExamples(false);
-      }
-    });
+      })
+      .catch((err) => {
+        if (cancelled) {
+          return;
+        }
+        if (gen !== externalExamplesGenRef.current) {
+          return;
+        }
+        if (visibleSenseIdRef.current !== requestSenseId) {
+          return;
+        }
+        logger.warn(
+          LogTag.EXAMPLES,
+          "External usage examples request failed; showing empty state",
+          err,
+        );
+        setOnlineExamples([]);
+        setLoadingOnlineExamples(false);
+      });
     return () => {
       cancelled = true;
       setLoadingOnlineExamples(false);
     };
-  }, [activeWord]);
+  }, [
+    activeWord?.id,
+    activeWord?.exampleSource,
+    activeWord?.sourceLanguageCode,
+    activeWord?.sourceText,
+    activeWord?.targetLanguageCode,
+  ]);
 
   useEffect(() => {
     const adv = snapshot?.levelAdvanced;
@@ -215,7 +273,11 @@ export default function HomeScreen() {
         <Text style={styles.subtitle}>{message}</Text>
         {snapshot?.emptyReason === "onboarding-incomplete" ? (
           <Pressable
-            style={styles.primaryButton}
+            android_ripple={ANDROID_RIPPLE_PRIMARY}
+            style={({ pressed }) => [
+              styles.primaryButton,
+              primarySolidPressStyle(pressed, false),
+            ]}
             onPress={() => router.replace("/(onboarding)")}
           >
             <Text style={styles.primaryButtonText}>Zaloguj się</Text>
@@ -226,8 +288,8 @@ export default function HomeScreen() {
   }
 
   const ipa = activeWord.pronunciationText?.trim();
-  /** Blokada tylko dla Known / Skip (kolejka zapisów); audio i szczegóły działają od razu. */
-  const isPrimaryActionLocked = isSyncPending;
+  /** Blokada tylko przy braku optymistycznego prefetchu (overlay); przy prefetchu przyciski pozostają responsywne. */
+  const isPrimaryActionLocked = showBlockingLoadingUi;
   /** Sync w tle przy już pokazanym słowie z prefetchu (tylko mini loader na Known, bez pełnego overlay). */
   const showPrimaryMiniSyncLoader =
     isSyncPending && !showBlockingLoadingUi;
@@ -238,6 +300,7 @@ export default function HomeScreen() {
       <ScrollView
         style={styles.scrollView}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
@@ -262,9 +325,12 @@ export default function HomeScreen() {
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Odsłuchaj wymowę"
-                  style={[
+                  android_ripple={ANDROID_RIPPLE_ICON_ROUND}
+                  hitSlop={HIT_SLOP_MINI}
+                  style={({ pressed }) => [
                     homeWordCardStyles.roundIconButton,
                     !canPronounce(activeWord) && homeWordCardStyles.buttonDisabled,
+                    roundIconPressStyle(pressed, !canPronounce(activeWord)),
                   ]}
                   onPress={() => speakWord(activeWord)}
                   disabled={!canPronounce(activeWord)}
@@ -278,7 +344,12 @@ export default function HomeScreen() {
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Pełne szczegóły słowa"
-                  style={homeWordCardStyles.roundIconButton}
+                  android_ripple={ANDROID_RIPPLE_ICON_ROUND}
+                  hitSlop={HIT_SLOP_MINI}
+                  style={({ pressed }) => [
+                    homeWordCardStyles.roundIconButton,
+                    roundIconPressStyle(pressed, false),
+                  ]}
                   onPress={() => router.push(`/word/${activeWord.id}`)}
                 >
                   <Ionicons
@@ -302,11 +373,13 @@ export default function HomeScreen() {
               ) : null}
 
               <View style={homeWordCardStyles.translationBlock}>
-                <FormattedTranslationGlosses
-                  word={activeWord}
-                  style={homeWordCardStyles.translation}
-                  separatorStyle={homeWordCardStyles.translationSeparator}
-                />
+                {visibleWordForTranslation ? (
+                  <FormattedTranslationGlosses
+                    word={visibleWordForTranslation}
+                    style={homeWordCardStyles.translation}
+                    separatorStyle={homeWordCardStyles.translationSeparator}
+                  />
+                ) : null}
               </View>
             </View>
 
@@ -357,10 +430,15 @@ export default function HomeScreen() {
 
         <View style={styles.actions}>
           <Pressable
-            style={[
+            android_ripple={ANDROID_RIPPLE_PRIMARY}
+            style={({ pressed }) => [
               styles.primaryButton,
               (!canAct || isPrimaryActionLocked) &&
                 homeWordCardStyles.buttonDisabled,
+              primarySolidPressStyle(
+                pressed,
+                !canAct || isPrimaryActionLocked,
+              ),
             ]}
             onPress={markKnown}
             disabled={!canAct || isPrimaryActionLocked}
@@ -381,17 +459,6 @@ export default function HomeScreen() {
             ) : (
               <Text style={styles.primaryButtonText}>I know this word</Text>
             )}
-          </Pressable>
-          <Pressable
-            style={[
-              styles.skipButton,
-              (!canAct || isPrimaryActionLocked) &&
-                homeWordCardStyles.buttonDisabled,
-            ]}
-            onPress={skipWord}
-            disabled={!canAct || isPrimaryActionLocked}
-          >
-            <Text style={styles.skipButtonText}>Skip</Text>
           </Pressable>
         </View>
       </ScrollView>

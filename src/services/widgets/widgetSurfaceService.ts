@@ -1,9 +1,13 @@
+import {
+  getCachedCurrentWord,
+  isCurrentWordCacheValidForToday,
+} from "@/src/cache/currentWordCache";
 import { hasSupabaseEnv } from "@/src/lib/supabase/client";
 import { fetchDailyWordState } from "@/src/services/api/progressApi";
 import {
-    applyDailyWordAction,
-    getDailyWordSnapshot,
-} from "@/src/services/dailyWord/dailyWordService";
+  applyDailyWordAction,
+  getDailyWordSnapshot,
+} from "@/src/services/currentWordService";
 import { getUserProfile } from "@/src/services/storage/profileStorage";
 import {
     buildHomeDeepLink,
@@ -45,7 +49,11 @@ export async function getWidgetSurfaceSnapshot(
     return buildUnavailableSnapshot();
   }
 
-  const dailySnapshot = await getDailyWordSnapshot(profile);
+  const cached = await getCachedCurrentWord(profile);
+  const dailySnapshot =
+    cached && isCurrentWordCacheValidForToday(cached)
+      ? cached.snapshot
+      : await getDailyWordSnapshot(profile);
   const word = dailySnapshot.activeWord;
 
   const homeParams = {
@@ -108,7 +116,7 @@ export async function applyWidgetAction(params: {
   }
 
   await syncWidgetLoadingSnapshot();
-  await applyDailyWordAction(profile, "known");
+  await applyDailyWordAction(profile);
 
   return {
     status: "ok",

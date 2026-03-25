@@ -1,5 +1,10 @@
 import { Pressable, StyleSheet, Text } from 'react-native';
 
+import {
+  ANDROID_RIPPLE_PRIMARY,
+  ANDROID_RIPPLE_SURFACE,
+  surfacePressStyle,
+} from '@/src/components/ui/interaction';
 import { StitchColors, StitchFonts, StitchRadius } from '@/src/theme/wordlyStitchTheme';
 
 export type SelectionChipProps = {
@@ -18,7 +23,13 @@ export function SelectionChip({ label, active, onPress, disabled }: SelectionChi
     <Pressable
       onPress={onPress}
       disabled={disabled}
-      style={[styles.chip, active && styles.chipActive, disabled && styles.chipDisabled]}>
+      android_ripple={active ? ANDROID_RIPPLE_PRIMARY : ANDROID_RIPPLE_SURFACE}
+      style={({ pressed }) => [
+        styles.chip,
+        active && styles.chipActive,
+        disabled && styles.chipDisabled,
+        surfacePressStyle(pressed, Boolean(disabled)),
+      ]}>
       <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
     </Pressable>
   );
@@ -26,8 +37,10 @@ export function SelectionChip({ label, active, onPress, disabled }: SelectionChi
 
 const styles = StyleSheet.create({
   chip: {
-    paddingVertical: 10,
-    paddingHorizontal: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    minHeight: 44,
+    justifyContent: 'center',
     borderRadius: StitchRadius.full,
     backgroundColor: StitchColors.surfaceContainerHigh,
   },

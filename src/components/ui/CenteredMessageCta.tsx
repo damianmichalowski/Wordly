@@ -1,5 +1,9 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import {
+  ANDROID_RIPPLE_PRIMARY,
+  primarySolidPressStyle,
+} from '@/src/components/ui/interaction';
 import { StitchColors, StitchFonts, StitchRadius } from '@/src/theme/wordlyStitchTheme';
 
 export type CenteredMessageCtaVariant = 'home' | 'settings' | 'revision';
@@ -30,7 +34,10 @@ export function CenteredMessageCta({
     <View style={s.centered}>
       <Text style={s.title}>{title}</Text>
       <Text style={s.subtitle}>{subtitle}</Text>
-      <Pressable style={s.primaryButton} onPress={onPrimaryPress}>
+      <Pressable
+        android_ripple={ANDROID_RIPPLE_PRIMARY}
+        style={({ pressed }) => [s.primaryButton, primarySolidPressStyle(pressed, false)]}
+        onPress={onPrimaryPress}>
         <Text style={s.primaryButtonText}>{primaryLabel}</Text>
       </Pressable>
     </View>

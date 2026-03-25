@@ -10,6 +10,14 @@ import {
 } from "react-native";
 
 import { ScreenHeader } from "@/src/components/layout/ScreenHeader";
+import {
+  ANDROID_RIPPLE_ICON_ROUND,
+  ANDROID_RIPPLE_PRIMARY,
+  ANDROID_RIPPLE_SURFACE,
+  HIT_SLOP_MINI,
+  primarySolidPressStyle,
+  surfacePressStyle,
+} from "@/src/components/ui/interaction";
 import { cefrLevels, type CefrLevel } from "@/src/types/cefr";
 import { StitchColors } from "@/src/theme/wordlyStitchTheme";
 import {
@@ -108,7 +116,14 @@ const RevisionKnownWordRow = memo(function RevisionKnownWordRow({
   const levelColors = cefrPillStyle(item.cefrLevel);
 
   return (
-    <Pressable style={styles.rowCard} onPress={() => onOpenWord(item)}>
+    <Pressable
+      android_ripple={ANDROID_RIPPLE_SURFACE}
+      style={({ pressed }) => [
+        styles.rowCard,
+        surfacePressStyle(pressed, false),
+      ]}
+      onPress={() => onOpenWord(item)}
+    >
       <View style={styles.rowLevelCol}>
         <View style={[styles.rowCefrPill, { backgroundColor: levelColors.bg }]}>
           <Text style={[styles.rowCefrPillText, { color: levelColors.fg }]}>
@@ -152,6 +167,7 @@ const RevisionListHeader = memo(function RevisionListHeader({
   onOpenFilters,
   activeFilterCount,
 }: RevisionListHeaderProps) {
+  const [searchFocused, setSearchFocused] = useState(false);
   const statsLine = sessionVariant
     ? knownCount === 1
       ? "1 słowo w tej sesji"
@@ -170,7 +186,14 @@ const RevisionListHeader = memo(function RevisionListHeader({
       <Text style={styles.libraryStats}>{statsLine}</Text>
 
       {showFlashcardHero && knownCount > 0 ? (
-        <Pressable style={styles.heroCta} onPress={onStartFlashcards}>
+        <Pressable
+          android_ripple={ANDROID_RIPPLE_PRIMARY}
+          style={({ pressed }) => [
+            styles.heroCta,
+            primarySolidPressStyle(pressed, false),
+          ]}
+          onPress={onStartFlashcards}
+        >
           <View style={styles.heroCtaDecor} pointerEvents="none" />
           <View style={styles.heroCtaInner}>
             <View style={styles.heroCtaBadgeRow}>
@@ -190,7 +213,12 @@ const RevisionListHeader = memo(function RevisionListHeader({
       ) : null}
 
       <View style={styles.filtersTriggerRow}>
-        <View style={styles.filtersSearchFieldCompact}>
+        <View
+          style={[
+            styles.filtersSearchFieldCompact,
+            searchFocused && styles.filtersSearchFieldFocused,
+          ]}
+        >
           <Ionicons
             name="search"
             size={20}
@@ -204,13 +232,21 @@ const RevisionListHeader = memo(function RevisionListHeader({
             placeholderTextColor={`${StitchColors.outlineVariant}99`}
             value={searchQuery}
             onChangeText={onSearchChange}
+            onFocus={() => setSearchFocused(true)}
+            onBlur={() => setSearchFocused(false)}
             autoCorrect={false}
             autoCapitalize="none"
             clearButtonMode="while-editing"
+            returnKeyType="search"
           />
         </View>
         <Pressable
-          style={styles.filtersOpenBtn}
+          android_ripple={ANDROID_RIPPLE_ICON_ROUND}
+          style={({ pressed }) => [
+            styles.filtersOpenBtn,
+            surfacePressStyle(pressed, false),
+          ]}
+          hitSlop={HIT_SLOP_MINI}
           onPress={onOpenFilters}
           accessibilityRole="button"
           accessibilityLabel="Filtry i sortowanie"
@@ -359,6 +395,8 @@ export function RevisionKnownWordsList({
         ListHeaderComponent={listHeader}
         ListEmptyComponent={empty}
         renderItem={renderItem}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
       />
       <RevisionFiltersSheet
         visible={sheetVisible}

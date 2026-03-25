@@ -15,6 +15,9 @@ const TATOEBA_SENTENCES = 'https://api.tatoeba.org/unstable/sentences';
 /** ISO 639-3 dla Tatoeba (`lang`): używamy wyłącznie korpusu angielskiego. */
 const TATOEBA_ENG = 'eng';
 
+/** Same key as `buildCacheKey` — dedupes concurrent fetches before AsyncStorage fills. */
+const inFlightExternalExamples = new Map<string, Promise<UsageExampleLine[]>>();
+
 type DictionaryEntry = {
   meanings?: { definitions?: { example?: string }[] }[];
 };
@@ -190,25 +193,39 @@ export async function fetchExternalUsageExamples(params: {
     return cached.slice(0, maxExamples);
   }
 
-  const sentences: string[] = [];
+  const inflight = inFlightExternalExamples.get(cacheKey);
+  if (inflight) {
+    const rows = await inflight;
+    return rows.slice(0, maxExamples);
+  }
 
-  const fromDict = await fetchFreeDictionaryEnglishExamples(lemmaNorm);
-  sentences.push(...fromDict.map((s) => normalizeDisplayText(s)));
+  const fetchPromise = (async (): Promise<UsageExampleLine[]> => {
+    const sentences: string[] = [];
 
-  const fromTatoeba = await fetchTatoebaEnglishExamples(lemmaNorm, maxExamples + 2);
-  for (const s of fromTatoeba) {
-    const cleaned = normalizeDisplayText(s);
-    if (!sentences.includes(cleaned)) {
-      sentences.push(cleaned);
+    const fromDict = await fetchFreeDictionaryEnglishExamples(lemmaNorm);
+    sentences.push(...fromDict.map((s) => normalizeDisplayText(s)));
+
+    const fromTatoeba = await fetchTatoebaEnglishExamples(lemmaNorm, maxExamples + 2);
+    for (const s of fromTatoeba) {
+      const cleaned = normalizeDisplayText(s);
+      if (!sentences.includes(cleaned)) {
+        sentences.push(cleaned);
+      }
     }
-  }
 
-  const unique = uniqueShortSentences(sentences, maxExamples);
-  const out: UsageExampleLine[] = unique.map((source) => ({ source }));
+    const unique = uniqueShortSentences(sentences, maxExamples);
+    const out: UsageExampleLine[] = unique.map((source) => ({ source }));
 
-  if (out.length > 0) {
-    await writeUsageCache(cacheKey, out);
-  }
+    if (out.length > 0) {
+      await writeUsageCache(cacheKey, out);
+    }
 
-  return out;
+    return out;
+  })();
+
+  inFlightExternalExamples.set(cacheKey, fetchPromise);
+  void fetchPromise.finally(() => {
+    inFlightExternalExamples.delete(cacheKey);
+  });
+  return fetchPromise;
 }

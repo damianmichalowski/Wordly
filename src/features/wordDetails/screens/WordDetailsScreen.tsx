@@ -12,6 +12,15 @@ import {
 
 import { ScreenHeader } from "@/src/components/layout/ScreenHeader";
 import {
+    ANDROID_RIPPLE_ICON_ROUND,
+    ANDROID_RIPPLE_PRIMARY,
+    ANDROID_RIPPLE_SURFACE,
+    HIT_SLOP_MINI,
+    primarySolidPressStyle,
+    roundIconPressStyle,
+    surfacePressStyle,
+} from "@/src/components/ui/interaction";
+import {
   fetchWordDetailBundleForSense,
   type WordDetailBundle,
 } from "@/src/services/api/vocabularyApi";
@@ -183,7 +192,14 @@ export default function WordDetailsScreen() {
         <View style={styles.centered}>
           <Text style={styles.titleError}>Nie udało się wczytać</Text>
           <Text style={styles.muted}>{error ?? "Brak danych."}</Text>
-          <Pressable style={styles.backButton} onPress={() => router.back()}>
+          <Pressable
+            android_ripple={ANDROID_RIPPLE_PRIMARY}
+            style={({ pressed }) => [
+              styles.backButton,
+              primarySolidPressStyle(pressed, false),
+            ]}
+            onPress={() => router.back()}
+          >
             <Text style={styles.backButtonText}>Wróć</Text>
           </Pressable>
         </View>
@@ -204,6 +220,7 @@ export default function WordDetailsScreen() {
         style={styles.scrollView}
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
       >
       <View style={styles.lemmaRow}>
         <Text style={styles.lemmaInRow} numberOfLines={4}>
@@ -212,7 +229,13 @@ export default function WordDetailsScreen() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Odsłuchaj wymowę"
-          style={[styles.roundIconButton, !canSpeak && { opacity: 0.45 }]}
+          android_ripple={ANDROID_RIPPLE_ICON_ROUND}
+          hitSlop={HIT_SLOP_MINI}
+          style={({ pressed }) => [
+            styles.roundIconButton,
+            !canSpeak && { opacity: 0.45 },
+            roundIconPressStyle(pressed, !canSpeak),
+          ]}
           onPress={onSpeak}
           disabled={!canSpeak}
         >
@@ -309,7 +332,14 @@ export default function WordDetailsScreen() {
 
       {fromRevision ? (
         <View style={styles.removeSection}>
-          <Pressable style={styles.removeButton} onPress={onRemove}>
+          <Pressable
+            android_ripple={ANDROID_RIPPLE_SURFACE}
+            style={({ pressed }) => [
+              styles.removeButton,
+              surfacePressStyle(pressed, false),
+            ]}
+            onPress={onRemove}
+          >
             <Text style={styles.removeButtonText}>Usuń z znanych</Text>
           </Pressable>
         </View>
