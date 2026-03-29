@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   Modal,
   Pressable,
@@ -17,7 +17,6 @@ import {
   primarySolidPressStyle,
   surfacePressStyle,
 } from "@/src/components/ui/interaction";
-import { cefrLevels, type CefrLevel } from "@/src/types/cefr";
 import type { RevisionSessionConfig } from "@/src/types/revisionSession";
 import { StitchColors } from "@/src/theme/wordlyStitchTheme";
 
@@ -25,18 +24,13 @@ import { revisionScreenStyles as styles } from "../revisionScreenStyles";
 
 export type RevisionHubCounts = {
   daily: number;
-  difficult: number;
   recent: number;
   all: number;
-  levelPreview: number;
-  /** Liczba znanych słów na poziom CEFR (Level Practice). */
-  levelCounts: Record<CefrLevel, number>;
 };
 
 type RevisionHubProps = {
   knownTotal: number;
   counts: RevisionHubCounts;
-  defaultLevel: CefrLevel;
   onSelectSession: (config: RevisionSessionConfig) => void;
   /** Gdy brak: zakładka Revision Hub (bez cofania do biblioteki). */
   onBackToLibrary?: () => void;
@@ -44,77 +38,70 @@ type RevisionHubProps = {
 
 const QUICK_SIZES = [5, 10, 20] as const;
 
-/** Siatka 2×3 w modalu Level Practice. */
-const LEVEL_GRID_ROWS: CefrLevel[][] = [
-  cefrLevels.slice(0, 2),
-  cefrLevels.slice(2, 4),
-  cefrLevels.slice(4, 6),
-];
-
 type HubIntroSheet =
   | { type: "daily" }
   | { type: "quick" }
-  | { type: "difficult" }
-  | { type: "recent" }
-  | { type: "level" };
+  | { type: "recent" };
+
+function defaultQuickCount(knownTotal: number): 5 | 10 | 20 {
+  if (knownTotal >= 20) {
+    return 20;
+  }
+  if (knownTotal >= 10) {
+    return 10;
+  }
+  return 5;
+}
+
+function quickSizeEnabled(knownTotal: number, n: 5 | 10 | 20): boolean {
+  return knownTotal >= n;
+}
+
+function moreWordsNeeded(knownTotal: number, target: 5 | 10 | 20): number {
+  return Math.max(0, target - knownTotal);
+}
 
 function getHubIntro(
   sheet: HubIntroSheet,
   counts: RevisionHubCounts,
-  defaultLevel: CefrLevel,
+  knownTotal: number,
 ): { title: string; subtitle?: string; body: string } {
   switch (sheet.type) {
     case "daily":
       return {
         title: "Daily Review",
         subtitle:
-          counts.daily === 1
-            ? "1 word ready today"
-            : `${counts.daily} words ready today`,
+          knownTotal < 1
+            ? undefined
+            : counts.daily === 1
+              ? "1 word ready"
+              : `${counts.daily} words ready`,
         body:
-          "This is the main revision mode and the best place to start each day.\n\n" +
-          "It only includes words that are due for review today, not a random mix from your whole library. " +
-          "You work through what the schedule says is ready now.\n\n" +
-          "Behind simple time gaps: when you remember a word easily, the next review can move further out; " +
-          "when it is harder, it comes back sooner. That keeps the daily batch meaningful and manageable.\n\n" +
-          "Use Daily Review as your default routine for staying on top of vocabulary.",
+          "Smart review based on how memory works.\n\n" +
+          "We pick a manageable set for today (up to 20 words): due words first, " +
+          "then what is next in your schedule, with newest words as a fallback when needed. " +
+          "This mode grows smarter over time as your progress data builds up.",
       };
     case "quick":
       return {
         title: "Quick Practice",
-        subtitle: "Short session",
+        subtitle: "A short mixed practice session",
         body:
-          "A rapid-fire session. Choose how many words to include, then start.",
-      };
-    case "difficult":
-      return {
-        title: "Difficult Words",
-        subtitle: `${counts.difficult} words`,
-        body:
-          "This mode is built around words that still give you trouble, not a mix with everything you already know well.\n\n" +
-          "Words you struggle to recall in other sessions, or that the system treats as harder to remember, " +
-          "are grouped here so you can attack them in one place.\n\n" +
-          "You drill the weak spots directly instead of diluting them with easy items. " +
-          "That keeps practice honest and makes progress feel real.",
+          "A short, random mix from your known words — no heavy scheduling. " +
+          "Pick 5, 10, or 20 cards and practice when you have a minute.",
       };
     case "recent":
       return {
         title: "Recently Learned",
-        subtitle: `${counts.recent} items`,
+        subtitle:
+          knownTotal < 1
+            ? undefined
+            : counts.recent === 1
+              ? "1 word"
+              : `${counts.recent} words`,
         body:
-          "This mode targets vocabulary you have marked known fairly recently, so you can reinforce it while it is still fresh.\n\n" +
-          "The list prefers words from roughly the last seven days. " +
-          "If there are few or none in that window, it fills from your most recently added known words up to a cap. " +
-          "That gives you a compact, up-to-date set instead of your whole library.\n\n" +
-          "New items are the easiest to forget. Use this alongside your usual schedule to lock in what you just learned, " +
-          "before spaced repetition alone would bring it back.",
-      };
-    case "level":
-      return {
-        title: "Level Practice",
-        subtitle: `Default ${defaultLevel}`,
-        body:
-          "Filter revision by CEFR level. Pick a level below. Each option starts its own session.",
+          "Practice your newest words (up to 20), ordered by when you learned them. " +
+          "Great for reinforcing what you just added to your known list.",
       };
   }
 }
@@ -122,17 +109,37 @@ function getHubIntro(
 export function RevisionHub({
   knownTotal,
   counts,
-  defaultLevel,
   onSelectSession,
   onBackToLibrary,
 }: RevisionHubProps) {
   const [sheet, setSheet] = useState<HubIntroSheet | null>(null);
   const [quickCount, setQuickCount] = useState<5 | 10 | 20>(10);
   const insets = useSafeAreaInsets();
-  const canPractice = knownTotal > 0;
 
-  const dailyLabel =
-    counts.daily === 1 ? "1 word ready" : `${counts.daily} words ready`;
+  const dailyUnlocked = knownTotal >= 1;
+  const recentUnlocked = knownTotal >= 1;
+  const quickUnlocked = knownTotal >= 5;
+
+  const dailyLabel = useMemo(() => {
+    if (!dailyUnlocked) {
+      return "No words to review yet";
+    }
+    return counts.daily === 1 ? "1 word ready" : `${counts.daily} words ready`;
+  }, [dailyUnlocked, counts.daily]);
+
+  const recentLabel = useMemo(() => {
+    if (!recentUnlocked) {
+      return "Learn your first word to unlock this mode";
+    }
+    return counts.recent === 1 ? "1 word" : `${counts.recent} words`;
+  }, [recentUnlocked, counts.recent]);
+
+  const quickLabel = useMemo(() => {
+    if (!quickUnlocked) {
+      return "Unlocks after learning 5 words";
+    }
+    return "5, 10, or 20 words";
+  }, [quickUnlocked]);
 
   const openSheet = useCallback((next: HubIntroSheet) => {
     setSheet(next);
@@ -142,36 +149,61 @@ export function RevisionHub({
     setSheet(null);
   }, []);
 
+  const openDailySheet = useCallback(() => {
+    if (!dailyUnlocked) {
+      return;
+    }
+    openSheet({ type: "daily" });
+  }, [dailyUnlocked, openSheet]);
+
+  const openRecentSheet = useCallback(() => {
+    if (!recentUnlocked) {
+      return;
+    }
+    openSheet({ type: "recent" });
+  }, [recentUnlocked, openSheet]);
+
+  const openQuickSheet = useCallback(() => {
+    if (!quickUnlocked) {
+      return;
+    }
+    setQuickCount(defaultQuickCount(knownTotal));
+    setSheet({ type: "quick" });
+  }, [quickUnlocked, knownTotal]);
+
   const commitSession = useCallback(() => {
-    if (!sheet || sheet.type === "level") {
+    if (!sheet) {
       return;
     }
     if (sheet.type === "quick") {
-      if (!canPractice) {
+      if (!quickUnlocked || !quickSizeEnabled(knownTotal, quickCount)) {
         return;
       }
       onSelectSession({ kind: "quick", count: quickCount });
     } else if (sheet.type === "daily") {
+      if (!dailyUnlocked) {
+        return;
+      }
       onSelectSession({ kind: "daily" });
-    } else if (sheet.type === "difficult") {
-      onSelectSession({ kind: "difficult" });
     } else if (sheet.type === "recent") {
+      if (!recentUnlocked) {
+        return;
+      }
       onSelectSession({ kind: "recent" });
     }
     setSheet(null);
-  }, [sheet, quickCount, canPractice, onSelectSession]);
-
-  const openQuickSheet = useCallback((count?: 5 | 10 | 20) => {
-    if (count !== undefined) {
-      setQuickCount(count);
-    } else {
-      setQuickCount(10);
-    }
-    setSheet({ type: "quick" });
-  }, []);
+  }, [
+    sheet,
+    quickCount,
+    quickUnlocked,
+    dailyUnlocked,
+    recentUnlocked,
+    knownTotal,
+    onSelectSession,
+  ]);
 
   const intro =
-    sheet === null ? null : getHubIntro(sheet, counts, defaultLevel);
+    sheet === null ? null : getHubIntro(sheet, counts, knownTotal);
 
   return (
     <View style={styles.listScreen}>
@@ -192,19 +224,45 @@ export function RevisionHub({
         ]}
         showsVerticalScrollIndicator={false}
       >
+        {knownTotal === 0 ? (
+          <View style={styles.hubUnlockBanner}>
+            <Text style={styles.hubUnlockBannerText}>
+              Learn your first word to unlock revision.
+            </Text>
+          </View>
+        ) : null}
+
         <View style={styles.hubBentoWrap}>
           <View style={styles.hubTileFull}>
             <Pressable
+              disabled={!dailyUnlocked}
               android_ripple={ANDROID_RIPPLE_SURFACE}
               style={({ pressed }) => [
                 styles.hubCardWhite,
                 styles.hubDailyFeatured,
-                surfacePressStyle(pressed, false),
+                !dailyUnlocked && styles.buttonDisabled,
+                surfacePressStyle(pressed, !dailyUnlocked),
               ]}
-              onPress={() => openSheet({ type: "daily" })}
+              onPress={openDailySheet}
               accessibilityRole="button"
-              accessibilityLabel="Daily Review"
+              accessibilityLabel="Daily Review, recommended"
+              accessibilityState={{ disabled: !dailyUnlocked }}
             >
+              <View
+                style={styles.hubDailyRecommendedBadge}
+                pointerEvents="none"
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+              >
+                <Ionicons
+                  name="sparkles"
+                  size={13}
+                  color={StitchColors.primary}
+                />
+                <Text style={styles.hubDailyRecommendedBadgeText}>
+                  Recommended
+                </Text>
+              </View>
               <View style={styles.hubDailyIconDecor} pointerEvents="none">
                 <MaterialIcons
                   name="psychology"
@@ -212,11 +270,12 @@ export function RevisionHub({
                   color={StitchColors.primary}
                 />
               </View>
-              <View style={styles.hubDailyTextBlock}>
+              <View
+                style={[styles.hubDailyTextBlock, styles.hubDailyTextBlockWithBadge]}
+              >
                 <Text style={styles.hubDailyCardTitle}>Daily Review</Text>
                 <Text style={styles.hubDailyDesc}>
-                  Personalized spaced repetition focusing on words that need
-                  reinforcement today.
+                  Smart review based on how memory works
                 </Text>
               </View>
               <View style={styles.hubDailyMetaRow}>
@@ -232,86 +291,17 @@ export function RevisionHub({
 
           <View style={styles.hubTileFull}>
             <Pressable
+              disabled={!recentUnlocked}
               android_ripple={ANDROID_RIPPLE_SURFACE}
               style={({ pressed }) => [
                 styles.hubCardWhite,
-                surfacePressStyle(pressed, false),
+                !recentUnlocked && styles.buttonDisabled,
+                surfacePressStyle(pressed, !recentUnlocked),
               ]}
-              onPress={() => openQuickSheet()}
+              onPress={openRecentSheet}
               accessibilityRole="button"
-              accessibilityLabel="Quick Practice"
-            >
-              <View
-                style={[
-                  styles.hubIconCircle,
-                  { backgroundColor: `${StitchColors.primary}18` },
-                ]}
-              >
-                <MaterialIcons
-                  name="timer"
-                  size={26}
-                  color={StitchColors.primary}
-                />
-              </View>
-              <Text style={styles.hubCardTitleSm}>Quick Practice</Text>
-              <Text style={styles.hubCardDescSm}>
-                A rapid-fire session. Choose 5, 10, or 20 words for a quick
-                mental spark.
-              </Text>
-              <View style={styles.hubSmallMetaRow}>
-                <Text style={styles.hubSmallMetaText}>5 to 20 words</Text>
-                <Ionicons
-                  name="arrow-forward"
-                  size={18}
-                  color={StitchColors.onSurfaceVariant}
-                />
-              </View>
-            </Pressable>
-          </View>
-
-          <View style={styles.hubTileFull}>
-            <Pressable
-              android_ripple={ANDROID_RIPPLE_SURFACE}
-              style={({ pressed }) => [
-                styles.hubCardWhite,
-                surfacePressStyle(pressed, false),
-              ]}
-              onPress={() => openSheet({ type: "difficult" })}
-            >
-              <View
-                style={[
-                  styles.hubIconCircle,
-                  { backgroundColor: "rgba(168, 54, 75, 0.12)" },
-                ]}
-              >
-                <MaterialIcons name="priority-high" size={26} color="#A8364B" />
-              </View>
-              <Text style={styles.hubCardTitleSm}>Difficult Words</Text>
-              <Text style={styles.hubCardDescSm}>
-                Conquer the words that challenge you most. Focus on
-                low-mastery vocabulary.
-              </Text>
-              <View style={styles.hubSmallMetaRow}>
-                <Text style={styles.hubSmallMetaText}>
-                  {counts.difficult} words
-                </Text>
-                <Ionicons
-                  name="arrow-forward"
-                  size={18}
-                  color={StitchColors.onSurfaceVariant}
-                />
-              </View>
-            </Pressable>
-          </View>
-
-          <View style={styles.hubTileFull}>
-            <Pressable
-              android_ripple={ANDROID_RIPPLE_SURFACE}
-              style={({ pressed }) => [
-                styles.hubCardWhite,
-                surfacePressStyle(pressed, false),
-              ]}
-              onPress={() => openSheet({ type: "recent" })}
+              accessibilityLabel="Recently Learned"
+              accessibilityState={{ disabled: !recentUnlocked }}
             >
               <View
                 style={[
@@ -327,13 +317,10 @@ export function RevisionHub({
               </View>
               <Text style={styles.hubCardTitleSm}>Recently Learned</Text>
               <Text style={styles.hubCardDescSm}>
-                Reinforce new concepts from the last 7 days to ensure long-term
-                retention.
+                Practice your newest words
               </Text>
               <View style={styles.hubSmallMetaRow}>
-                <Text style={styles.hubSmallMetaText}>
-                  {counts.recent} items
-                </Text>
+                <Text style={styles.hubSmallMetaText}>{recentLabel}</Text>
                 <Ionicons
                   name="arrow-forward"
                   size={18}
@@ -345,14 +332,17 @@ export function RevisionHub({
 
           <View style={styles.hubTileFull}>
             <Pressable
+              disabled={!quickUnlocked}
               android_ripple={ANDROID_RIPPLE_SURFACE}
               style={({ pressed }) => [
                 styles.hubCardWhite,
-                surfacePressStyle(pressed, false),
+                !quickUnlocked && styles.buttonDisabled,
+                surfacePressStyle(pressed, !quickUnlocked),
               ]}
-              onPress={() => openSheet({ type: "level" })}
+              onPress={openQuickSheet}
               accessibilityRole="button"
-              accessibilityLabel="Level Practice"
+              accessibilityLabel="Quick Practice"
+              accessibilityState={{ disabled: !quickUnlocked }}
             >
               <View
                 style={[
@@ -361,28 +351,17 @@ export function RevisionHub({
                 ]}
               >
                 <MaterialIcons
-                  name="bar-chart"
+                  name="timer"
                   size={26}
                   color={StitchColors.primary}
                 />
               </View>
-              <Text style={styles.hubCardTitleSm}>Level Practice</Text>
+              <Text style={styles.hubCardTitleSm}>Quick Practice</Text>
               <Text style={styles.hubCardDescSm}>
-                Filter your revision by CEFR level.
+                A short mixed practice session
               </Text>
-              <View
-                style={[
-                  styles.hubSmallMetaRow,
-                  counts.levelPreview === 0 && styles.hubSmallMetaRowEnd,
-                ]}
-              >
-                {counts.levelPreview > 0 ? (
-                  <Text style={styles.hubSmallMetaText}>
-                    {counts.levelPreview === 1
-                      ? "1 word"
-                      : `${counts.levelPreview} words`}
-                  </Text>
-                ) : null}
+              <View style={styles.hubSmallMetaRow}>
+                <Text style={styles.hubSmallMetaText}>{quickLabel}</Text>
                 <Ionicons
                   name="arrow-forward"
                   size={18}
@@ -394,9 +373,9 @@ export function RevisionHub({
 
           <View style={[styles.hubTileFull, styles.hubAchievement]}>
             <View>
-              <Text style={styles.hubAchievementTitle}>Steady Progress</Text>
+              <Text style={styles.hubAchievementTitle}>Steady progress</Text>
               <Text style={styles.hubAchievementDesc}>
-                Ćwicz regularnie. Kolejne statystyki pojawią się tutaj.
+                Keep practicing. More stats will show up here.
               </Text>
             </View>
           </View>
@@ -431,52 +410,79 @@ export function RevisionHub({
                 {sheet?.type === "quick" ? (
                   <>
                     <View style={styles.hubQuickRow}>
-                      {QUICK_SIZES.map((n) => (
-                        <Pressable
-                          key={n}
-                          android_ripple={ANDROID_RIPPLE_SURFACE}
-                          style={({ pressed }) => [
-                            styles.hubQuickSegment,
-                            quickCount === n && styles.hubQuickSegmentSelected,
-                            !canPractice && styles.buttonDisabled,
-                            surfacePressStyle(pressed, !canPractice),
-                          ]}
-                          disabled={!canPractice}
-                          onPress={() => setQuickCount(n)}
-                          accessibilityRole="button"
-                          accessibilityState={{ selected: quickCount === n }}
-                          accessibilityLabel={`${n} words`}
-                        >
-                          <Text
-                            style={[
-                              styles.hubQuickSegmentValue,
-                              quickCount === n &&
-                                styles.hubQuickSegmentValueSelected,
-                            ]}
-                          >
-                            {n}
-                          </Text>
-                          <Text
-                            style={[
-                              styles.hubQuickSegmentUnit,
-                              quickCount === n &&
-                                styles.hubQuickSegmentUnitSelected,
-                            ]}
-                          >
-                            words
-                          </Text>
-                        </Pressable>
-                      ))}
+                      {QUICK_SIZES.map((n) => {
+                        const enabled = quickSizeEnabled(knownTotal, n);
+                        const selected = quickCount === n;
+                        const need = moreWordsNeeded(knownTotal, n);
+                        return (
+                          <View key={n} style={{ flex: 1, minWidth: 0 }}>
+                            <Pressable
+                              disabled={!enabled}
+                              android_ripple={ANDROID_RIPPLE_SURFACE}
+                              style={({ pressed }) => [
+                                styles.hubQuickSegment,
+                                selected &&
+                                  enabled &&
+                                  styles.hubQuickSegmentSelected,
+                                !enabled && styles.buttonDisabled,
+                                surfacePressStyle(pressed, !enabled),
+                              ]}
+                              onPress={() => setQuickCount(n)}
+                              accessibilityRole="button"
+                              accessibilityState={{
+                                selected: selected && enabled,
+                                disabled: !enabled,
+                              }}
+                              accessibilityLabel={`${n} words`}
+                            >
+                              <Text
+                                style={[
+                                  styles.hubQuickSegmentValue,
+                                  selected &&
+                                    enabled &&
+                                    styles.hubQuickSegmentValueSelected,
+                                ]}
+                              >
+                                {n}
+                              </Text>
+                              <Text
+                                style={[
+                                  styles.hubQuickSegmentUnit,
+                                  selected &&
+                                    enabled &&
+                                    styles.hubQuickSegmentUnitSelected,
+                                ]}
+                              >
+                                words
+                              </Text>
+                            </Pressable>
+                            {!enabled && need > 0 && (n === 10 || n === 20) ? (
+                              <Text style={styles.hubQuickSizeHint}>
+                                {`Learn ${need} more word${need === 1 ? "" : "s"} to unlock ${n}-word practice`}
+                              </Text>
+                            ) : null}
+                          </View>
+                        );
+                      })}
                     </View>
                     <Pressable
                       android_ripple={ANDROID_RIPPLE_PRIMARY}
                       style={({ pressed }) => [
                         styles.hubStartSessionBtn,
                         styles.hubSessionSheetPrimary,
-                        !canPractice && styles.buttonDisabled,
-                        primarySolidPressStyle(pressed, !canPractice),
+                        (!quickUnlocked ||
+                          !quickSizeEnabled(knownTotal, quickCount)) &&
+                          styles.buttonDisabled,
+                        primarySolidPressStyle(
+                          pressed,
+                          !quickUnlocked ||
+                            !quickSizeEnabled(knownTotal, quickCount),
+                        ),
                       ]}
-                      disabled={!canPractice}
+                      disabled={
+                        !quickUnlocked ||
+                        !quickSizeEnabled(knownTotal, quickCount)
+                      }
                       onPress={commitSession}
                       accessibilityRole="button"
                       accessibilityLabel="Start session"
@@ -488,56 +494,7 @@ export function RevisionHub({
                   </>
                 ) : null}
 
-                {sheet?.type === "level" ? (
-                  <View style={styles.hubLevelGrid}>
-                    {LEVEL_GRID_ROWS.map((row, rowIndex) => (
-                      <View
-                        key={`row-${rowIndex}`}
-                        style={styles.hubLevelGridRow}
-                      >
-                        {row.map((level) => {
-                          const n = counts.levelCounts[level];
-                          const disabled = n === 0;
-                          return (
-                            <Pressable
-                              key={level}
-                              android_ripple={ANDROID_RIPPLE_SURFACE}
-                              style={({ pressed }) => [
-                                styles.hubLevelGridCell,
-                                disabled && styles.hubLevelGridCellDisabled,
-                                surfacePressStyle(pressed, disabled),
-                              ]}
-                              disabled={disabled}
-                              onPress={() => {
-                                closeSheet();
-                                onSelectSession({ kind: "level", level });
-                              }}
-                              accessibilityRole="button"
-                              accessibilityState={{ disabled }}
-                            >
-                              <Text style={styles.hubLevelGridCellTitle}>
-                                {level}
-                              </Text>
-                              {disabled ? (
-                                <Text style={styles.hubLevelGridCellEmpty}>
-                                  Brak znanych słów na tym poziomie.
-                                </Text>
-                              ) : (
-                                <Text style={styles.hubLevelGridCellMeta}>
-                                  {n === 1 ? "1 word" : `${n} words`}
-                                </Text>
-                              )}
-                            </Pressable>
-                          );
-                        })}
-                      </View>
-                    ))}
-                  </View>
-                ) : null}
-
-                {sheet &&
-                sheet.type !== "quick" &&
-                sheet.type !== "level" ? (
+                {sheet && sheet.type !== "quick" ? (
                   <Pressable
                     android_ripple={ANDROID_RIPPLE_PRIMARY}
                     style={({ pressed }) => [

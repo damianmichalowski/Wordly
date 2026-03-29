@@ -36,6 +36,7 @@ export default function RevisionHubTabScreen() {
     activeCard,
     startFlashcards,
     exitFlashcards,
+    completeRevisionSession,
     flip,
     next,
     previous,
@@ -66,7 +67,6 @@ export default function RevisionHubTabScreen() {
       <RevisionHub
         knownTotal={hubCounts.all}
         counts={hubCounts}
-        defaultLevel={profile.displayLevel}
         onSelectSession={enterSession}
       />
     );
@@ -101,6 +101,25 @@ export default function RevisionHubTabScreen() {
         previous={previous}
         sessionLabel={
           sessionConfig ? getFlashSessionLabel(sessionConfig) : undefined
+        }
+        onLastCardContinue={
+          sessionPhase === 'session'
+            ? () => {
+                const stats = completeRevisionSession();
+                if (stats) {
+                  router.push({
+                    pathname: '/revision-session-complete',
+                    params: {
+                      cardsReviewed: String(stats.cardsReviewed),
+                      sessionDurationMs: String(stats.sessionDurationMs),
+                      mode: stats.mode,
+                    },
+                  });
+                } else {
+                  exitFlashcards();
+                }
+              }
+            : undefined
         }
       />
     );

@@ -95,6 +95,7 @@ function RootNavigator() {
         <Stack.Screen name="(onboarding)" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="word/[senseId]" options={{ headerShown: false }} />
+        <Stack.Screen name="revision-session-complete" options={{ headerShown: false }} />
       </Stack>
     </ThemeProvider>
   );

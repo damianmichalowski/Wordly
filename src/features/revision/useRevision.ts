@@ -5,7 +5,6 @@ import { PROFILE_SETTINGS_SAVED } from "@/src/events/profileSettingsEvents";
 import { WORD_PROGRESS_UPDATED } from "@/src/events/wordProgressEvents";
 import {
   buildSessionWordList,
-  countWordsForLevelPreview,
   countWordsForMode,
 } from "@/src/services/revision/revisionModeFilters";
 import {
@@ -29,10 +28,11 @@ import {
 import { getUserProfile } from "@/src/services/storage/profileStorage";
 import { LogTag, logger } from "@/src/utils/logger";
 import { shuffleArray } from "@/src/utils/shuffleArray";
-import { cefrLevels, type CefrLevel } from "@/src/types/cefr";
-import type {
-  RevisionSessionConfig,
-  RevisionSessionPhase,
+import {
+  encodeRevisionSessionMode,
+  type RevisionSessionCompletionStats,
+  type RevisionSessionConfig,
+  type RevisionSessionPhase,
 } from "@/src/types/revisionSession";
 import type { UserProfile } from "@/src/types/profile";
 import type { UserWordProgress } from "@/src/types/progress";
@@ -137,11 +137,23 @@ export function useRevision(options?: UseRevisionOptions) {
     createInitialRevisionState(variant),
   );
 
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
+  /** Wall-clock start of the current hub revision flash session (for completion stats). */
+  const flashSessionStartedAtMsRef = useRef<number | null>(null);
+
   useEffect(() => {
     void loadRevisionSortPrefs().then((prefs) =>
       setState((prev) => ({ ...prev, sortPrefs: prefs })),
     );
   }, []);
+
+  useEffect(() => {
+    if (state.mode !== "flashcards") {
+      flashSessionStartedAtMsRef.current = null;
+    }
+  }, [state.mode]);
 
   const revisionOpenedLogged = useRef(false);
   useEffect(() => {
@@ -208,34 +220,41 @@ export function useRevision(options?: UseRevisionOptions) {
   }, [state.sessionPhase, sessionWords, knownWords]);
 
   const hubCounts = useMemo(() => {
-    const emptyLevelCounts = Object.fromEntries(
-      cefrLevels.map((lv) => [lv, 0]),
-    ) as Record<CefrLevel, number>;
-
     if (!state.revisionBundle || !state.profile) {
       return {
         daily: 0,
-        difficult: 0,
         recent: 0,
         all: 0,
-        levelPreview: 0,
-        levelCounts: emptyLevelCounts,
       };
     }
     const b = state.revisionBundle;
-    const levelCounts = {} as Record<CefrLevel, number>;
-    for (const lv of cefrLevels) {
-      levelCounts[lv] = countWordsForMode(b, { kind: "level", level: lv });
-    }
     return {
       daily: countWordsForMode(b, { kind: "daily" }),
-      difficult: countWordsForMode(b, { kind: "difficult" }),
       recent: countWordsForMode(b, { kind: "recent" }),
       all: b.words.length,
-      levelPreview: countWordsForLevelPreview(b, state.profile.displayLevel),
-      levelCounts,
     };
   }, [state.revisionBundle, state.profile]);
+
+  useEffect(() => {
+    if (state.isLoading || !state.profile || !state.revisionBundle) {
+      return;
+    }
+    const n = hubCounts.all;
+    const quickUnlocked = n >= 5;
+    logger.info(LogTag.REVISION_HUB, "Recomputed mode availability");
+    logger.info(
+      LogTag.REVISION_HUB,
+      `Daily Review available count=${hubCounts.daily}`,
+    );
+    logger.info(
+      LogTag.REVISION_HUB,
+      `Quick Practice unlocked=${quickUnlocked}`,
+    );
+    logger.info(
+      LogTag.REVISION_HUB,
+      `Recently Learned available count=${hubCounts.recent}`,
+    );
+  }, [state.isLoading, state.profile, state.revisionBundle, hubCounts]);
 
   const resetPhase = useCallback(
     () => (variantRef.current === "hub" ? "hub" : "library"),
@@ -280,8 +299,6 @@ export function useRevision(options?: UseRevisionOptions) {
         revisionBundle: bundle,
         ...flashcardAdjustmentsForBundleChange(prev, bundle),
       }));
-      logger.info(LogTag.REVISION_HUB, "Recomputed mode stats locally");
-
       void (async () => {
         try {
           await flushRevisionReviewProgressBatches(profile.userId);
@@ -329,7 +346,6 @@ export function useRevision(options?: UseRevisionOptions) {
       revisionBundle: bundle,
       ...flashcardAdjustmentsForBundleChange(prev, bundle),
     }));
-    logger.info(LogTag.REVISION_HUB, "Recomputed mode stats locally");
   }, [resetPhase]);
 
   useEffect(() => {
@@ -360,10 +376,7 @@ export function useRevision(options?: UseRevisionOptions) {
         if (!cached) {
           return;
         }
-        logger.info(
-          LogTag.REVISION_HUB,
-          "Known words updated — refreshing in-memory revision bundle from local cache",
-        );
+        logger.info(LogTag.REVISION_HUB, "Loaded known words from memory");
         const bundle: RevisionBundle = {
           words: cached.words,
           progressByWordId: cached.progressByWordId,
@@ -378,7 +391,6 @@ export function useRevision(options?: UseRevisionOptions) {
             ...flashcardAdjustmentsForBundleChange(prev, bundle),
           };
         });
-        logger.info(LogTag.REVISION_HUB, "Recomputed mode stats locally");
       })();
     });
     return () => sub.remove();
@@ -421,10 +433,6 @@ export function useRevision(options?: UseRevisionOptions) {
   }, []);
 
   const enterSession = useCallback((config: RevisionSessionConfig) => {
-    logger.info(
-      LogTag.REVISION_SESSION,
-      `Building session from local known words (mode=${config.kind})`,
-    );
     setState((prev) => {
       if (!prev.revisionBundle) {
         logger.warn(
@@ -462,6 +470,7 @@ export function useRevision(options?: UseRevisionOptions) {
         LogTag.REVISION_SESSION,
         `Session created with ${words.length} cards`,
       );
+      flashSessionStartedAtMsRef.current = Date.now();
       return {
         ...prev,
         sessionPhase: "session",
@@ -507,6 +516,9 @@ export function useRevision(options?: UseRevisionOptions) {
       if (source.length === 0) {
         return prev;
       }
+      if (variantRef.current === "hub" && prev.sessionPhase === "session") {
+        flashSessionStartedAtMsRef.current = Date.now();
+      }
       return {
         ...prev,
         mode: "flashcards",
@@ -518,6 +530,7 @@ export function useRevision(options?: UseRevisionOptions) {
   }, []);
 
   const exitFlashcards = useCallback(() => {
+    flashSessionStartedAtMsRef.current = null;
     void flushRevisionReviewProgressBatches();
     setState((prev) => {
       const fromHubSession =
@@ -532,6 +545,44 @@ export function useRevision(options?: UseRevisionOptions) {
         isFlipped: false,
       };
     });
+  }, []);
+
+  /**
+   * Finishes a hub revision session from the last flashcard (“Koniec”).
+   * Returns stats for the completion screen, or `null` if this was not a hub session run.
+   */
+  const completeRevisionSession = useCallback((): RevisionSessionCompletionStats | null => {
+    void flushRevisionReviewProgressBatches();
+    const prev = stateRef.current;
+    const isHubSession =
+      variantRef.current === "hub" &&
+      prev.sessionPhase === "session" &&
+      prev.flashDeck.length > 0;
+    if (!isHubSession) {
+      return null;
+    }
+    const stats: RevisionSessionCompletionStats = {
+      cardsReviewed: prev.flashDeck.length,
+      sessionDurationMs:
+        flashSessionStartedAtMsRef.current != null
+          ? Date.now() - flashSessionStartedAtMsRef.current
+          : 0,
+      mode: prev.sessionConfig
+        ? encodeRevisionSessionMode(prev.sessionConfig)
+        : "unknown",
+    };
+    logger.info(LogTag.REVISION, "Session completed");
+    flashSessionStartedAtMsRef.current = null;
+    setState((s) => ({
+      ...s,
+      sessionPhase: "hub",
+      sessionConfig: null,
+      mode: "list",
+      flashDeck: [],
+      index: 0,
+      isFlipped: false,
+    }));
+    return stats;
   }, []);
 
   const flip = useCallback(() => {
@@ -602,6 +653,7 @@ export function useRevision(options?: UseRevisionOptions) {
     activeCard,
     startFlashcards,
     exitFlashcards,
+    completeRevisionSession,
     flip,
     next,
     previous,

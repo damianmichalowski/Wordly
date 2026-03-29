@@ -725,6 +725,30 @@ export const revisionScreenStyles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingBottom: 40,
   },
+  hubUnlockBanner: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: StitchRadius.md,
+    backgroundColor: StitchColors.surfaceContainerHigh,
+    marginBottom: 4,
+    borderWidth: 1,
+    borderColor: `${StitchColors.outlineVariant}33`,
+  },
+  hubUnlockBannerText: {
+    fontSize: 14,
+    fontFamily: StitchFonts.bodyMedium,
+    color: StitchColors.onSurfaceVariant,
+    textAlign: "center",
+    lineHeight: 20,
+  },
+  hubQuickSizeHint: {
+    fontSize: 11,
+    fontFamily: StitchFonts.body,
+    color: StitchColors.onSurfaceVariant,
+    marginTop: 6,
+    textAlign: "center",
+    lineHeight: 15,
+  },
   hubIntro: {
     marginBottom: 22,
   },
@@ -844,12 +868,6 @@ export const revisionScreenStyles = StyleSheet.create({
     fontFamily: StitchFonts.bodySemi,
     color: StitchColors.onPrimary,
   },
-  hubLevelHint: {
-    marginTop: 10,
-    fontSize: 12,
-    fontFamily: StitchFonts.bodyMedium,
-    color: StitchColors.primary,
-  },
   /** Stitch: bento, jedna kolumna, pełna szerokość. */
   hubBentoWrap: {
     gap: 16,
@@ -875,12 +893,39 @@ export const revisionScreenStyles = StyleSheet.create({
     minHeight: 0,
     alignItems: "stretch",
   },
+  /** Pill „Recommended” — lewy górny róg, żeby nie kolidować z ikoną dekoracyjną po prawej. */
+  hubDailyRecommendedBadge: {
+    position: "absolute",
+    top: 14,
+    left: 14,
+    zIndex: 2,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderRadius: StitchRadius.full,
+    backgroundColor: `${StitchColors.primary}1F`,
+    borderWidth: 1,
+    borderColor: `${StitchColors.primary}40`,
+  },
+  hubDailyRecommendedBadgeText: {
+    fontSize: 11,
+    fontFamily: StitchFonts.bodySemi,
+    color: StitchColors.primary,
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+  },
   /** Tytuł + opis: miejsce pod ikonę z prawej (absolute). */
   hubDailyTextBlock: {
     position: "relative",
     zIndex: 1,
     paddingRight: 100,
     marginBottom: 4,
+  },
+  /** Odstęp pod badge „Recommended” (absolute, nie zajmuje flow). */
+  hubDailyTextBlockWithBadge: {
+    paddingTop: 38,
   },
   /** „Words ready” + strzałka na pełną szerokość karty (poza wąskim blokiem tekstu). */
   hubDailyMetaRow: {
@@ -1017,52 +1062,6 @@ export const revisionScreenStyles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-  },
-  /** Gdy brak lewej etykiety (np. Level Practice bez słów): strzałka w prawo. */
-  hubSmallMetaRowEnd: {
-    justifyContent: "flex-end",
-  },
-  hubLevelGrid: {
-    width: "100%",
-    gap: 12,
-  },
-  hubLevelGridRow: {
-    flexDirection: "row",
-    gap: 12,
-    width: "100%",
-  },
-  hubLevelGridCell: {
-    flex: 1,
-    minWidth: 0,
-    borderRadius: StitchRadius.lg,
-    backgroundColor: StitchColors.surfaceContainerLow,
-    paddingVertical: 16,
-    paddingHorizontal: 14,
-    minHeight: 96,
-    borderWidth: 1,
-    borderColor: `${StitchColors.outlineVariant}80`,
-    justifyContent: "center",
-  },
-  hubLevelGridCellDisabled: {
-    opacity: 0.55,
-    backgroundColor: StitchColors.surfaceContainerHighest,
-  },
-  hubLevelGridCellTitle: {
-    fontSize: 20,
-    fontFamily: StitchFonts.headline,
-    color: StitchColors.onSurface,
-    marginBottom: 6,
-  },
-  hubLevelGridCellMeta: {
-    fontSize: 13,
-    fontFamily: StitchFonts.bodyMedium,
-    color: StitchColors.onSurfaceVariant,
-  },
-  hubLevelGridCellEmpty: {
-    fontSize: 12,
-    fontFamily: StitchFonts.body,
-    color: StitchColors.onSurfaceVariant,
-    lineHeight: 17,
   },
   hubSmallMetaText: {
     fontSize: 13,

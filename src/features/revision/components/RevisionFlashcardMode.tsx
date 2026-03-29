@@ -46,6 +46,11 @@ type RevisionFlashcardModeProps = {
   previous: () => void;
   /** Krótka etykieta trybu zamiast ogólnego „Powtórka”. */
   sessionLabel?: string;
+  /**
+   * When set, the last card “Koniec” calls this instead of {@link exitFlashcards}
+   * (e.g. hub revision session completion screen).
+   */
+  onLastCardContinue?: () => void;
 };
 
 /** `isFlipped` w stanie = tłumaczenie jest odsłonięte (reveal), bez „obracania” fiszki. */
@@ -59,6 +64,7 @@ export function RevisionFlashcardMode({
   next,
   previous,
   sessionLabel,
+  onLastCardContinue,
 }: RevisionFlashcardModeProps) {
   const insets = useSafeAreaInsets();
   const [onlineExamples, setOnlineExamples] = useState<
@@ -377,7 +383,11 @@ export function RevisionFlashcardMode({
             styles.flashNavNext,
             primarySolidPressStyle(pressed, false),
           ]}
-          onPress={isLastCard ? exitFlashcards : next}
+          onPress={
+            isLastCard
+              ? onLastCardContinue ?? exitFlashcards
+              : next
+          }
           accessibilityLabel={
             isLastCard ? "Zakończ sesję powtórki" : "Następne słowo"
           }

@@ -1,13 +1,11 @@
 import type { RevisionSessionConfig } from "@/src/types/revisionSession";
-import type { CefrLevel } from "@/src/types/cefr";
 import type { UserWordProgress } from "@/src/types/progress";
 import type { VocabularyWord } from "@/src/types/words";
 
 import type { RevisionSortPrefs } from "@/src/services/revision/revisionSortPrefs";
 import { sortKnownWordsForRevision } from "@/src/services/revision/revisionSort";
-import {
-  isDueForReview,
-} from "@/src/services/revision/spacedRepetition";
+import { isDueForReview } from "@/src/services/revision/spacedRepetition";
+import { LogTag, logger } from "@/src/utils/logger";
 import { shuffleArray } from "@/src/utils/shuffleArray";
 
 export type RevisionWordBundle = {
@@ -15,14 +13,13 @@ export type RevisionWordBundle = {
   progressByWordId: Record<string, UserWordProgress>;
 };
 
-function filterDueToday(
-  words: VocabularyWord[],
-  progressByWordId: Record<string, UserWordProgress>,
-): VocabularyWord[] {
-  return words.filter((w) => isDueForReview(progressByWordId[w.id]));
-}
+/** Hard cap for Daily Review — never a huge session. */
+export const DAILY_REVIEW_MAX_WORDS = 20;
 
-function sortByNextReviewThenId(
+/** Recently Learned uses newest known words only, capped. */
+export const RECENTLY_LEARNED_MAX_WORDS = 20;
+
+function sortByMostUrgentDue(
   words: VocabularyWord[],
   progressByWordId: Record<string, UserWordProgress>,
 ): VocabularyWord[] {
@@ -42,145 +39,175 @@ function sortByNextReviewThenId(
   });
 }
 
-function filterDifficult(
+/** Non-due words: soonest upcoming review first (next in queue). */
+function sortBySoonestUpcomingReview(
   words: VocabularyWord[],
   progressByWordId: Record<string, UserWordProgress>,
 ): VocabularyWord[] {
-  const scored = words
-    .map((w) => {
-      const p = progressByWordId[w.id];
-      if (!p) {
-        return null;
-      }
-      const ds = p.difficultyScore ?? 0;
-      const due = isDueForReview(p) ? 1 : 0;
-      const last = p.lastReviewedAt ?? "";
-      return { w, ds, due, last };
-    })
-    .filter((x): x is NonNullable<typeof x> => Boolean(x));
-
-  scored.sort((a, b) => {
-    if (b.ds !== a.ds) {
-      return b.ds - a.ds;
+  return [...words].sort((a, b) => {
+    const na = progressByWordId[a.id]?.nextReviewAt ?? "";
+    const nb = progressByWordId[b.id]?.nextReviewAt ?? "";
+    if (na === nb) {
+      return a.id.localeCompare(b.id);
     }
-    if (b.due !== a.due) {
-      return b.due - a.due;
+    if (!na) {
+      return 1;
     }
-    if (a.last !== b.last) {
-      return a.last.localeCompare(b.last);
+    if (!nb) {
+      return -1;
     }
-    return a.w.id.localeCompare(b.w.id);
+    return na.localeCompare(nb);
   });
-  return scored.map((s) => s.w);
 }
 
-function filterRecentlyLearned(
+function sortByNewestLearned(
   words: VocabularyWord[],
   progressByWordId: Record<string, UserWordProgress>,
 ): VocabularyWord[] {
-  const withDates = words
-    .map((w) => ({ w, p: progressByWordId[w.id] }))
-    .filter(
-      (x): x is { w: VocabularyWord; p: UserWordProgress } =>
-        Boolean(x.p?.markedKnownAt),
-    )
-    .sort((a, b) =>
-      (b.p.markedKnownAt ?? "").localeCompare(a.p.markedKnownAt ?? ""),
-    );
-
-  const sevenDaysMs = 7 * 86400000;
-  const cutoff = Date.now() - sevenDaysMs;
-  const in7 = withDates.filter(
-    (x) => new Date(x.p.markedKnownAt!).getTime() >= cutoff,
-  );
-  const pool = in7.length > 0 ? in7 : withDates.slice(0, 20);
-  return pool.slice(0, 20).map((x) => x.w);
-}
-
-function filterByLevel(
-  words: VocabularyWord[],
-  level: CefrLevel,
-): VocabularyWord[] {
-  return words.filter((w) => w.cefrLevel === level);
+  return [...words].sort((a, b) => {
+    const pa = progressByWordId[a.id];
+    const pb = progressByWordId[b.id];
+    const ta = pa?.markedKnownAt ?? pa?.firstSeenAt ?? "";
+    const tb = pb?.markedKnownAt ?? pb?.firstSeenAt ?? "";
+    const cmp = tb.localeCompare(ta);
+    if (cmp !== 0) {
+      return cmp;
+    }
+    return a.id.localeCompare(b.id);
+  });
 }
 
 /**
- * Zestaw słów dla wybranego trybu (przed lokalnym wyszukiwaniem / sortem z arkusza).
+ * Daily Review: up to {@link DAILY_REVIEW_MAX_WORDS} words.
+ * Priority: due → oldest upcoming review candidates → newest learned fallback.
+ */
+export function buildDailyReviewSessionWords(
+  bundle: RevisionWordBundle,
+): VocabularyWord[] {
+  const { words, progressByWordId } = bundle;
+  const max = DAILY_REVIEW_MAX_WORDS;
+  if (words.length === 0) {
+    return [];
+  }
+
+  const due = words.filter((w) => isDueForReview(progressByWordId[w.id]));
+  const dueSorted = sortByMostUrgentDue(due, progressByWordId);
+  const selected: VocabularyWord[] = [];
+  const taken = new Set<string>();
+
+  for (const w of dueSorted) {
+    if (selected.length >= max) {
+      break;
+    }
+    selected.push(w);
+    taken.add(w.id);
+  }
+
+  if (selected.length < max) {
+    const notDue = words.filter(
+      (w) =>
+        !taken.has(w.id) && !isDueForReview(progressByWordId[w.id]),
+    );
+    const upcoming = sortBySoonestUpcomingReview(notDue, progressByWordId);
+    for (const w of upcoming) {
+      if (selected.length >= max) {
+        break;
+      }
+      selected.push(w);
+      taken.add(w.id);
+    }
+  }
+
+  if (selected.length < max) {
+    const rest = words.filter((w) => !taken.has(w.id));
+    const newest = sortByNewestLearned(rest, progressByWordId);
+    for (const w of newest) {
+      if (selected.length >= max) {
+        break;
+      }
+      selected.push(w);
+      taken.add(w.id);
+    }
+  }
+
+  return selected;
+}
+
+/** Newest known words first, capped. */
+export function buildRecentlyLearnedSessionWords(
+  bundle: RevisionWordBundle,
+): VocabularyWord[] {
+  const { words, progressByWordId } = bundle;
+  if (words.length === 0) {
+    return [];
+  }
+  const sorted = sortByNewestLearned(words, progressByWordId);
+  return sorted.slice(0, RECENTLY_LEARNED_MAX_WORDS);
+}
+
+/** Random known words, no SRS weighting. */
+export function buildQuickPracticeSessionWords(
+  bundle: RevisionWordBundle,
+  count: number,
+  sortPrefs: RevisionSortPrefs,
+): VocabularyWord[] {
+  const sorted = sortKnownWordsForRevision(
+    bundle.words,
+    bundle.progressByWordId,
+    sortPrefs,
+  );
+  const shuffled = shuffleArray(sorted);
+  const n = Math.min(count, shuffled.length);
+  return shuffled.slice(0, n);
+}
+
+/**
+ * Zestaw słów dla wybranego trybu (przed lokalnym shuffle w sesji fiszek).
  */
 export function buildSessionWordList(
   bundle: RevisionWordBundle,
   config: RevisionSessionConfig,
   sortPrefs: RevisionSortPrefs,
 ): VocabularyWord[] {
-  const { words, progressByWordId } = bundle;
-
   switch (config.kind) {
     case "daily": {
-      const due = filterDueToday(words, progressByWordId);
-      return sortByNextReviewThenId(due, progressByWordId);
+      logger.info(LogTag.REVISION_SESSION, "Building Daily Review session");
+      return buildDailyReviewSessionWords(bundle);
     }
     case "quick": {
-      const sorted = sortKnownWordsForRevision(
-        words,
-        progressByWordId,
-        sortPrefs,
-      );
-      const shuffled = shuffleArray(sorted);
-      const n = Math.min(config.count, shuffled.length);
-      return shuffled.slice(0, n);
-    }
-    case "difficult": {
-      const difficult = filterDifficult(words, progressByWordId);
-      return difficult;
+      logger.info(LogTag.REVISION_SESSION, "Building Quick Practice session");
+      return buildQuickPracticeSessionWords(bundle, config.count, sortPrefs);
     }
     case "recent": {
-      return filterRecentlyLearned(words, progressByWordId);
-    }
-    case "level": {
-      const levelWords = filterByLevel(words, config.level);
-      return sortKnownWordsForRevision(
-        levelWords,
-        progressByWordId,
-        sortPrefs,
-      );
+      logger.info(LogTag.REVISION_SESSION, "Building Recently Learned session");
+      return buildRecentlyLearnedSessionWords(bundle);
     }
     case "category":
     case "custom":
+      return [];
+    default:
       return [];
   }
 }
 
 /**
- * Liczba słów do wyświetlenia przy karcie trybu (hub).
- * Dla `level` bez kontekstu użyj `previewLevel` (np. `profile.displayLevel`).
+ * Liczba kart dla trybu (hub — bez Supabase).
  */
 export function countWordsForMode(
   bundle: RevisionWordBundle,
   config: RevisionSessionConfig,
 ): number {
-  const { words, progressByWordId } = bundle;
-
   switch (config.kind) {
     case "daily":
-      return filterDueToday(words, progressByWordId).length;
+      return buildDailyReviewSessionWords(bundle).length;
     case "quick":
-      return Math.min(config.count, words.length);
-    case "difficult":
-      return filterDifficult(words, progressByWordId).length;
+      return Math.min(config.count, bundle.words.length);
     case "recent":
-      return filterRecentlyLearned(words, progressByWordId).length;
-    case "level":
-      return filterByLevel(words, config.level).length;
+      return buildRecentlyLearnedSessionWords(bundle).length;
     case "category":
     case "custom":
       return 0;
+    default:
+      return 0;
   }
-}
-
-/** Podgląd liczby dla „Ćwicz według poziomu” zanim użytkownik wybierze poziom. */
-export function countWordsForLevelPreview(
-  bundle: RevisionWordBundle,
-  level: CefrLevel,
-): number {
-  return filterByLevel(bundle.words, level).length;
 }
