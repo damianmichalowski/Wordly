@@ -10,9 +10,13 @@ export type VocabularyWord = {
   targetText: string;
   /** Wszystkie glossy lematu (gdy sensów > 1) do formatowanego wyświetlania. */
   targetGlossParts?: string[];
+  /** Do 3 przykładów (np. fiszki powtórki), gdy brak, używamy `exampleSource`. */
+  exampleParts?: string[];
   exampleSource: string;
   exampleTarget: string;
   cefrLevel: CefrLevel;
+  /** ISO z `user_word_progress.known_at`, sortowanie listy biblioteki. */
+  knownAt?: string | null;
   /** `vocabulary_senses.part_of_speech` (np. noun, verb) z widoku `vocabulary_sense_display`. */
   partOfSpeech?: string;
   /** `vocabulary_lemmas.id` do łączenia sensów tego samego hasła. */

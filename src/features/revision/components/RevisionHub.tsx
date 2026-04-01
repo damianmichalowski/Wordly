@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import { useRouter } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import {
   Modal,
@@ -11,6 +12,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ScreenHeader } from "@/src/components/layout/ScreenHeader";
+import { CenteredUnlockCtaCard } from "@/src/components/ui/CenteredUnlockCtaCard";
 import {
   ANDROID_RIPPLE_PRIMARY,
   ANDROID_RIPPLE_SURFACE,
@@ -31,6 +33,8 @@ export type RevisionHubCounts = {
 type RevisionHubProps = {
   knownTotal: number;
   counts: RevisionHubCounts;
+  /** Ukończono dziś sesję Daily Review (lokalna data kalendarza). */
+  dailyReviewCompletedToday?: boolean;
   onSelectSession: (config: RevisionSessionConfig) => void;
   /** Gdy brak: zakładka Revision Hub (bez cofania do biblioteki). */
   onBackToLibrary?: () => void;
@@ -65,29 +69,37 @@ function getHubIntro(
   sheet: HubIntroSheet,
   counts: RevisionHubCounts,
   knownTotal: number,
+  dailyCompletedToday: boolean,
 ): { title: string; subtitle?: string; body: string } {
   switch (sheet.type) {
-    case "daily":
+    case "daily": {
+      let subtitle: string | undefined;
+      if (knownTotal >= 1) {
+        if (counts.daily > 0) {
+          subtitle =
+            counts.daily === 1 ? "1 word ready" : `${counts.daily} words ready`;
+        } else if (dailyCompletedToday) {
+          subtitle = "Done for today";
+        } else {
+          subtitle = "Brak słów do powtórki dziś";
+        }
+      }
       return {
         title: "Daily Review",
-        subtitle:
-          knownTotal < 1
-            ? undefined
-            : counts.daily === 1
-              ? "1 word ready"
-              : `${counts.daily} words ready`,
+        subtitle,
         body:
           "Smart review based on how memory works.\n\n" +
           "We pick a manageable set for today (up to 20 words): due words first, " +
           "then what is next in your schedule, with newest words as a fallback when needed. " +
           "This mode grows smarter over time as your progress data builds up.",
       };
+    }
     case "quick":
       return {
         title: "Quick Practice",
         subtitle: "A short mixed practice session",
         body:
-          "A short, random mix from your known words — no heavy scheduling. " +
+          "A short, random mix from your known words, without heavy scheduling. " +
           "Pick 5, 10, or 20 cards and practice when you have a minute.",
       };
     case "recent":
@@ -109,9 +121,11 @@ function getHubIntro(
 export function RevisionHub({
   knownTotal,
   counts,
+  dailyReviewCompletedToday = false,
   onSelectSession,
   onBackToLibrary,
 }: RevisionHubProps) {
+  const router = useRouter();
   const [sheet, setSheet] = useState<HubIntroSheet | null>(null);
   const [quickCount, setQuickCount] = useState<5 | 10 | 20>(10);
   const insets = useSafeAreaInsets();
@@ -119,10 +133,17 @@ export function RevisionHub({
   const dailyUnlocked = knownTotal >= 1;
   const recentUnlocked = knownTotal >= 1;
   const quickUnlocked = knownTotal >= 5;
+  const dailyEnabled = dailyUnlocked && counts.daily > 0;
+  /** Ukończono dziś Daily Review i nie ma już słów w kolejce, pokazujemy „Completed” / „Done for today”. */
+  const dailyReviewDoneForToday =
+    dailyReviewCompletedToday && counts.daily === 0;
 
-  const dailyLabel = useMemo(() => {
+  const dailyWordsReadyLabel = useMemo(() => {
     if (!dailyUnlocked) {
-      return "No words to review yet";
+      return "Odblokuj: naucz się 1 słowa w Daily Word";
+    }
+    if (counts.daily === 0) {
+      return "Brak słów do powtórki dziś";
     }
     return counts.daily === 1 ? "1 word ready" : `${counts.daily} words ready`;
   }, [dailyUnlocked, counts.daily]);
@@ -150,11 +171,11 @@ export function RevisionHub({
   }, []);
 
   const openDailySheet = useCallback(() => {
-    if (!dailyUnlocked) {
+    if (!dailyEnabled) {
       return;
     }
     openSheet({ type: "daily" });
-  }, [dailyUnlocked, openSheet]);
+  }, [dailyEnabled, openSheet]);
 
   const openRecentSheet = useCallback(() => {
     if (!recentUnlocked) {
@@ -203,7 +224,13 @@ export function RevisionHub({
   ]);
 
   const intro =
-    sheet === null ? null : getHubIntro(sheet, counts, knownTotal);
+    sheet === null
+      ? null
+      : getHubIntro(sheet, counts, knownTotal, dailyReviewCompletedToday);
+
+  const goToDailyWord = useCallback(() => {
+    router.push("/(tabs)/home");
+  }, [router]);
 
   return (
     <View style={styles.listScreen}>
@@ -225,43 +252,68 @@ export function RevisionHub({
         showsVerticalScrollIndicator={false}
       >
         {knownTotal === 0 ? (
-          <View style={styles.hubUnlockBanner}>
-            <Text style={styles.hubUnlockBannerText}>
-              Learn your first word to unlock revision.
-            </Text>
-          </View>
+          <CenteredUnlockCtaCard
+            icon="lock-closed-outline"
+            title="Odblokuj powtórki"
+            body="Naucz się pierwszego słowa, aby odblokować Revision. Potem wróć tu i zacznij regularne powtórki."
+            primaryLabel="Przejdź do Daily Word"
+            onPrimaryPress={goToDailyWord}
+          />
         ) : null}
 
         <View style={styles.hubBentoWrap}>
           <View style={styles.hubTileFull}>
             <Pressable
-              disabled={!dailyUnlocked}
+              disabled={!dailyEnabled}
               android_ripple={ANDROID_RIPPLE_SURFACE}
               style={({ pressed }) => [
                 styles.hubCardWhite,
                 styles.hubDailyFeatured,
-                !dailyUnlocked && styles.buttonDisabled,
-                surfacePressStyle(pressed, !dailyUnlocked),
+                dailyUnlocked &&
+                  dailyReviewDoneForToday &&
+                  styles.hubDailyFeaturedCompleted,
+                !dailyEnabled && styles.buttonDisabled,
+                surfacePressStyle(pressed, !dailyEnabled),
               ]}
               onPress={openDailySheet}
               accessibilityRole="button"
               accessibilityLabel="Daily Review, recommended"
-              accessibilityState={{ disabled: !dailyUnlocked }}
+              accessibilityState={{ disabled: !dailyEnabled }}
             >
               <View
-                style={styles.hubDailyRecommendedBadge}
+                style={[
+                  styles.hubDailyRecommendedBadge,
+                  dailyUnlocked &&
+                    dailyReviewDoneForToday &&
+                    styles.hubDailyCompletedBadge,
+                ]}
                 pointerEvents="none"
                 accessibilityElementsHidden
                 importantForAccessibility="no-hide-descendants"
               >
-                <Ionicons
-                  name="sparkles"
-                  size={13}
-                  color={StitchColors.primary}
-                />
-                <Text style={styles.hubDailyRecommendedBadgeText}>
-                  Recommended
-                </Text>
+                {dailyUnlocked && dailyReviewDoneForToday ? (
+                  <>
+                    <Ionicons
+                      name="checkmark-circle"
+                      size={13}
+                      color="#286C34"
+                    />
+                    <Text style={styles.hubDailyCompletedBadgeText}>
+                      Completed
+                    </Text>
+                  </>
+                ) : dailyUnlocked && counts.daily > 0 ? (
+                  <>
+                    <Ionicons
+                      name="sparkles"
+                      size={13}
+                      color={StitchColors.primary}
+                    />
+                    <Text style={styles.hubDailyRecommendedBadgeText}>
+                      Recommended
+                    </Text>
+                  </>
+                ) : null}
               </View>
               <View style={styles.hubDailyIconDecor} pointerEvents="none">
                 <MaterialIcons
@@ -279,9 +331,24 @@ export function RevisionHub({
                 </Text>
               </View>
               <View style={styles.hubDailyMetaRow}>
-                <Text style={styles.hubSmallMetaText}>{dailyLabel}</Text>
+                {dailyUnlocked && dailyReviewDoneForToday ? (
+                  <View style={styles.hubDailyDoneRow}>
+                    <Ionicons
+                      name="checkmark-circle"
+                      size={20}
+                      color="#286C34"
+                    />
+                    <Text style={styles.hubDailyDoneLabel}>
+                      Done for today
+                    </Text>
+                  </View>
+                ) : (
+                  <Text style={styles.hubSmallMetaText}>
+                    {dailyWordsReadyLabel}
+                  </Text>
+                )}
                 <Ionicons
-                  name="arrow-forward"
+                  name={dailyUnlocked ? "arrow-forward" : "lock-closed-outline"}
                   size={18}
                   color={StitchColors.onSurfaceVariant}
                 />
@@ -369,15 +436,6 @@ export function RevisionHub({
                 />
               </View>
             </Pressable>
-          </View>
-
-          <View style={[styles.hubTileFull, styles.hubAchievement]}>
-            <View>
-              <Text style={styles.hubAchievementTitle}>Steady progress</Text>
-              <Text style={styles.hubAchievementDesc}>
-                Keep practicing. More stats will show up here.
-              </Text>
-            </View>
           </View>
         </View>
       </ScrollView>
@@ -504,10 +562,20 @@ export function RevisionHub({
                     ]}
                     onPress={commitSession}
                     accessibilityRole="button"
-                    accessibilityLabel="Start session"
+                    accessibilityLabel={
+                      sheet.type === "daily" &&
+                      dailyReviewCompletedToday &&
+                      counts.daily > 0
+                        ? "Start next session"
+                        : "Start session"
+                    }
                   >
                     <Text style={styles.hubStartSessionBtnText}>
-                      Start Session
+                      {sheet.type === "daily" &&
+                      dailyReviewCompletedToday &&
+                      counts.daily > 0
+                        ? "Start next session"
+                        : "Start Session"}
                     </Text>
                   </Pressable>
                 ) : null}

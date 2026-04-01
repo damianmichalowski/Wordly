@@ -15,8 +15,8 @@ Expo Router + React Native + TypeScript. **Living document:** update as migratio
 | **`components/` (root)** | ~~Removed~~ — zostało przeniesione do `src/hooks/` i `src/components/Themed.tsx`. | **Resolved** (migracja struktury). |
 | **`src/features/wordly-widget-bridge`** | Expo native module (TS + Kotlin/Swift) — lokalny pakiet `file:` w `package.json` | **Correct** |
 | **`targets/widget/`** | `@bacons/apple-targets` iOS widget extension | **Correct** — must stay; tooling expects this path. |
-| **`supabase/`** | Migrations, seeds, README | **Correct** — backend schema lives with app repo. |
-| **`scripts/vocabulary-seed/`** | Offline seed tooling (tsx) | **Correct** — not bundled with the app. |
+| **`supabase/`** | Migracje SQL + README (CLI) | **Correct** — backend schema w repo. |
+| **`scripts/`** | Opcjonalne skrypty pomocnicze (obecnie pusty placeholder `.gitkeep`) | — |
 | **`patches/`** | `patch-package` | **Correct** — root is conventional. |
 | **`ios/`** | Prebuild / Xcode project | **Risky** — don’t reorganize without strong reason. |
 | **`docs/`** | Architecture, flows, checklists | **Good** — consolidated documentation. |
@@ -82,8 +82,8 @@ src/
   events/                     # cross-feature event names (optional; or under services)
 components/                   # (removed) — było `Themed` + hooks; teraz `src/components` + `src/hooks`
 targets/                      # Apple widget extension (bacons)
-supabase/                     # migrations + seeds
-scripts/                      # tooling (vocabulary-seed, …)
+supabase/                     # migrations + README
+scripts/                      # opcjonalne narzędzia (np. seed poza aplikacją)
 patches/
 docs/
 ios/ android/                 # when using prebuild / committed native projects
@@ -120,4 +120,4 @@ ios/ android/                 # when using prebuild / committed native projects
 - **Step 3 (2026):** `useColorScheme` / `useClientOnlyValue` (+ `.web` variants) moved to `src/hooks/`; `app/_layout.tsx`, `app/(tabs)/_layout.tsx`, `Themed.tsx` (wtedy w `components/`) updated; stare pliki w root `components/` usunięte.
 - **Step 4 (2026):** `Themed.tsx` → `src/components/Themed.tsx`; `app/+not-found.tsx` import z `@/src/components/Themed`; katalog root `components/` usunięty (pusty).
 - **Step 5 (2026):** Zaktualizowano **`src/README.md`** (struktura + konwencja `@/src/...`); **`README.md`** linkuje `docs/PROJECT_STRUCTURE.md` (higiena dokumentacji po migracji).
-- **Step 2 (ESLint, 2026):** `eslint` + `eslint-config-expo`, skrypt **`npm run lint`**, `eslint.config.js` (flat); ignorowane m.in. `ios/`, `scripts/vocabulary-seed/`, `supabase/`; poprawka `react/no-unescaped-entities` w `app/+not-found.tsx`.
+- **Step 2 (ESLint, 2026):** `eslint` + `eslint-config-expo`, skrypt **`npm run lint`**, `eslint.config.js` (flat); ignorowane m.in. `ios/`, `supabase/`; poprawka `react/no-unescaped-entities` w `app/+not-found.tsx`.

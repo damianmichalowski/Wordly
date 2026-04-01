@@ -31,9 +31,9 @@ APPLE_TEAM_ID=XXXXXXXXXX
 
 (`Membership` na [developer.apple.com](https://developer.apple.com/account) — 10 znaków.)
 
-### A2. Migracje bazy (jeśli jeszcze nie zrobione)
+### A2. Migracje bazy (nowy schemat)
 
-W Supabase: **SQL Editor** albo CLI — uruchom migracje z `supabase/migrations/` w kolejności dat w nazwie pliku (opis w `supabase/README.md`). Bez tego tabele `profiles`, `user_word_progress` itd. nie istnieją.
+Po dodaniu plików SQL w `supabase/migrations/` zastosuj je w projekcie (Supabase CLI: `supabase db push`, albo **SQL Editor**). Szczegóły: `supabase/README.md`.
 
 ### A3. Build aplikacji (moduły natywne)
 

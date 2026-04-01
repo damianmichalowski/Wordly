@@ -1,12 +1,17 @@
-import { createContext, useEffect, useMemo, useState, type PropsWithChildren } from 'react';
+import {
+  createContext,
+  useEffect,
+  useMemo,
+  useState,
+  type PropsWithChildren,
+} from "react";
 
-import * as WebBrowser from 'expo-web-browser';
+import * as WebBrowser from "expo-web-browser";
 
-import { useWidgetDeepLinkActions } from '@/src/hooks/useWidgetDeepLinkActions';
-import { useWidgetSnapshotSync } from '@/src/hooks/useWidgetSnapshotSync';
-import { getSupabaseClient, hasSupabaseEnv } from '@/src/lib/supabase/client';
-import { syncStoredProfileUserIdWithAuth } from '@/src/services/api/profileApi';
-import { isOnboardingComplete } from '@/src/services/storage/onboardingStorage';
+import { useWidgetDeepLinkActions } from "@/src/hooks/useWidgetDeepLinkActions";
+import { useWidgetSnapshotSync } from "@/src/hooks/useWidgetSnapshotSync";
+import { getSupabaseClient, hasSupabaseEnv } from "@/src/lib/supabase/client";
+import { isOnboardingComplete } from "@/src/services/storage/onboardingStorage";
 
 type AppBootstrapContextValue = {
   isReady: boolean;
@@ -18,7 +23,8 @@ type AppBootstrapContextValue = {
   markOnboardingIncomplete: () => void;
 };
 
-export const AppBootstrapContext = createContext<AppBootstrapContextValue | null>(null);
+export const AppBootstrapContext =
+  createContext<AppBootstrapContextValue | null>(null);
 
 export function AppBootstrapProvider({ children }: PropsWithChildren) {
   const [isReady, setIsReady] = useState(false);
@@ -35,9 +41,6 @@ export function AppBootstrapProvider({ children }: PropsWithChildren) {
     const loadBootstrap = async () => {
       const supabaseConfigured = hasSupabaseEnv();
       const hasCompletedOnboarding = await isOnboardingComplete();
-      if (hasCompletedOnboarding && supabaseConfigured) {
-        await syncStoredProfileUserIdWithAuth();
-      }
 
       if (supabaseConfigured) {
         const { data } = await getSupabaseClient().auth.getSession();
@@ -91,5 +94,9 @@ export function AppBootstrapProvider({ children }: PropsWithChildren) {
   useWidgetSnapshotSync(isReady && hasOnboarded && isAuthenticated);
   useWidgetDeepLinkActions(isReady && hasOnboarded && isAuthenticated);
 
-  return <AppBootstrapContext.Provider value={value}>{children}</AppBootstrapContext.Provider>;
+  return (
+    <AppBootstrapContext.Provider value={value}>
+      {children}
+    </AppBootstrapContext.Provider>
+  );
 }

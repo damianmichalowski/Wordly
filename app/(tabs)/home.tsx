@@ -1,3 +1,3 @@
-import HomeScreen from '@/src/features/dailyWord/screens/HomeScreen';
+import HomeScreen from "@/src/features/daily-word/screens/HomeScreen";
 
 export default HomeScreen;

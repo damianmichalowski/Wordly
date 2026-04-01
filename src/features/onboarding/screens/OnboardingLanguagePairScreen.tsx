@@ -1,60 +1,138 @@
-import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ElementRef,
+} from "react";
 import {
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
   View,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+  type LayoutChangeEvent,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   ANDROID_RIPPLE_PRIMARY,
+  ANDROID_RIPPLE_SURFACE,
+  linkPressStyle,
   primarySolidPressStyle,
-} from '@/src/components/ui/interaction';
-import { supportedLanguages } from '@/src/constants/languages';
-import { OnboardingStepChrome } from '@/src/features/onboarding/components/OnboardingStepChrome';
-import { useOnboardingDraft } from '@/src/features/onboarding/OnboardingProvider';
-import type { LanguageCode } from '@/src/types/language';
-import { StitchColors, StitchFonts, StitchRadius } from '@/src/theme/wordlyStitchTheme';
+} from "@/src/components/ui/interaction";
+import { LanguageFlagBadge } from "@/src/features/settings/components/LanguageFlagBadge";
+import { OnboardingStepChrome } from "@/src/features/onboarding/components/OnboardingStepChrome";
+import { useOnboardingDraft } from "@/src/features/onboarding/OnboardingProvider";
+import { getOnboardingOptions } from "@/src/features/profile/services/profile.service";
+import type { OnboardingLanguage } from "@/src/features/profile/types/profile.types";
+import { StitchColors, StitchFonts, StitchRadius } from "@/src/theme/wordlyStitchTheme";
 
-type PickerSlot = 'source' | 'target' | null;
+type PickerSlot = "source" | "target" | null;
+
+const SCROLL_OVERFLOW_EPS_PX = 2;
+
+/** ISO 639-1 z locale urządzenia (Hermes / JSC). */
+function getDevicePrimaryLanguageTag(): string {
+  try {
+    const loc = Intl.DateTimeFormat().resolvedOptions().locale;
+    const tag = loc.replace(/_/g, "-").split("-")[0]?.toLowerCase() ?? "";
+    return tag || "en";
+  } catch {
+    return "en";
+  }
+}
+
+function pickDefaultNativeLanguageId(
+  languages: OnboardingLanguage[],
+  deviceTag: string,
+): string | null {
+  if (languages.length === 0) {
+    return null;
+  }
+  const n = deviceTag.toLowerCase().slice(0, 2);
+  const match = languages.find(
+    (l) => l.code.trim().toLowerCase().slice(0, 2) === n,
+  );
+  if (match) {
+    return match.id;
+  }
+  const english = languages.find((l) =>
+    l.code.trim().toLowerCase().startsWith("en"),
+  );
+  if (english) {
+    return english.id;
+  }
+  return languages[0].id;
+}
 
 function LanguagePickerRow({
-  languageCode,
+  language,
   onPress,
-  emphasized,
+  emptyLabel,
 }: {
-  languageCode: LanguageCode;
+  language: OnboardingLanguage | null;
   onPress: () => void;
-  emphasized?: boolean;
+  /** Gdy brak wyboru (np. język nauki). */
+  emptyLabel?: string;
 }) {
-  const lang = supportedLanguages.find((l) => l.code === languageCode) ?? supportedLanguages[0];
-  const codeLabel = languageCode.toUpperCase();
-
+  const hasLanguage = language != null;
+  const isAwaitingChoice = !hasLanguage && emptyLabel != null;
+  const title = hasLanguage ? language.name : (emptyLabel ?? "…");
   return (
     <Pressable
       onPress={onPress}
+      android_ripple={ANDROID_RIPPLE_SURFACE}
       style={({ pressed }) => [
         styles.selectorRow,
-        emphasized && styles.selectorRowEmphasized,
         pressed && styles.selectorRowPressed,
-      ]}>
-      <View style={styles.selectorAvatar}>
-        <Text style={styles.selectorAvatarText}>{codeLabel}</Text>
+      ]}
+    >
+      <View style={styles.selectorFlagCell}>
+        {hasLanguage ? (
+          <LanguageFlagBadge code={language.code} />
+        ) : isAwaitingChoice ? (
+          <View style={styles.selectorFlagPlaceholder}>
+            <Ionicons
+              name="language-outline"
+              size={20}
+              color={StitchColors.outlineVariant}
+            />
+          </View>
+        ) : null}
       </View>
       <View style={styles.selectorTextCol}>
-        <Text style={styles.selectorTitle}>{lang.name}</Text>
-        <Text style={styles.selectorSubtitle}>{lang.endonym}</Text>
+        <Text
+          style={[
+            styles.selectorTitle,
+            isAwaitingChoice && styles.selectorTitlePlaceholder,
+          ]}
+        >
+          {title}
+        </Text>
+        <Text
+          style={[
+            styles.selectorSubtitle,
+            isAwaitingChoice && styles.selectorSubtitlePlaceholder,
+          ]}
+        >
+          {hasLanguage
+            ? language.code.toUpperCase()
+            : isAwaitingChoice
+              ? "Dotknij, aby wybrać"
+              : ""}
+        </Text>
       </View>
       <Ionicons
         name="chevron-down"
         size={22}
-        color={emphasized ? StitchColors.primary : StitchColors.outlineVariant}
+        color={StitchColors.outlineVariant}
       />
     </Pressable>
   );
@@ -66,42 +144,127 @@ export default function OnboardingLanguagePairScreen() {
   const { width } = useWindowDimensions();
   const isWide = width >= 720;
 
-  const { draft, setSourceLanguage, setTargetLanguage } = useOnboardingDraft();
+  const { draft, setNativeLanguageId, setLearningLanguageId } =
+    useOnboardingDraft();
+  const [languages, setLanguages] = useState<OnboardingLanguage[]>([]);
   const [picker, setPicker] = useState<PickerSlot>(null);
 
-  const canContinue = draft.sourceLanguage !== draft.targetLanguage;
+  const languagePickerScrollRef = useRef<ElementRef<typeof ScrollView>>(null);
+  const [languagePickerScroll, setLanguagePickerScroll] = useState({
+    layoutH: 0,
+    contentH: 0,
+  });
+
+  const languagePickerNeedsScroll =
+    languagePickerScroll.layoutH > 0 &&
+    languagePickerScroll.contentH >
+      languagePickerScroll.layoutH + SCROLL_OVERFLOW_EPS_PX;
+
+  useEffect(() => {
+    setLanguagePickerScroll({ layoutH: 0, contentH: 0 });
+  }, [picker]);
+
+  useEffect(() => {
+    if (!picker || !languagePickerNeedsScroll || Platform.OS !== "ios") {
+      return;
+    }
+    const id = requestAnimationFrame(() => {
+      languagePickerScrollRef.current?.flashScrollIndicators();
+    });
+    return () => cancelAnimationFrame(id);
+  }, [picker, languagePickerNeedsScroll]);
+
+  const onLanguagePickerLayout = useCallback((e: LayoutChangeEvent) => {
+    const layoutH = e.nativeEvent.layout.height;
+    setLanguagePickerScroll((prev) => ({
+      ...prev,
+      layoutH,
+    }));
+  }, []);
+
+  const onLanguagePickerContentSizeChange = useCallback(
+    (_w: number, h: number) => {
+      setLanguagePickerScroll((prev) => ({ ...prev, contentH: h }));
+    },
+    [],
+  );
+
+  const native = useMemo(
+    () => languages.find((l) => l.id === draft.nativeLanguageId) ?? null,
+    [draft.nativeLanguageId, languages],
+  );
+  const learning = useMemo(
+    () => languages.find((l) => l.id === draft.learningLanguageId) ?? null,
+    [draft.learningLanguageId, languages],
+  );
+
+  const canContinue =
+    draft.nativeLanguageId != null &&
+    draft.learningLanguageId != null &&
+    draft.nativeLanguageId !== draft.learningLanguageId;
 
   const swapLanguages = () => {
-    const s = draft.sourceLanguage;
-    setSourceLanguage(draft.targetLanguage);
-    setTargetLanguage(s);
+    const s = draft.nativeLanguageId;
+    if (!s || !draft.learningLanguageId) {
+      return;
+    }
+    setNativeLanguageId(draft.learningLanguageId);
+    setLearningLanguageId(s);
   };
 
   const closePicker = () => setPicker(null);
 
-  const applyLanguage = (code: LanguageCode) => {
-    if (picker === 'source') {
-      setSourceLanguage(code);
-    } else if (picker === 'target') {
-      setTargetLanguage(code);
+  const selectLanguageInPicker = (id: string) => {
+    if (picker === "source") {
+      setNativeLanguageId(id);
+    } else if (picker === "target") {
+      setLearningLanguageId(id);
     }
-    closePicker();
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const opts = await getOnboardingOptions();
+      if (cancelled) {
+        return;
+      }
+      setLanguages(opts.languages);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /** Język ojczysty: raz, wg locale urządzenia (język nauki zostaje pusty do wyboru). */
+  useEffect(() => {
+    if (languages.length === 0 || draft.nativeLanguageId != null) {
+      return;
+    }
+    const tag = getDevicePrimaryLanguageTag();
+    const id = pickDefaultNativeLanguageId(languages, tag);
+    if (id) {
+      setNativeLanguageId(id);
+    }
+  }, [draft.nativeLanguageId, languages, setNativeLanguageId]);
 
   const sourceBlock = (
     <View style={styles.langCol}>
-      <Text style={styles.fieldLabel}>I speak</Text>
-      <LanguagePickerRow languageCode={draft.sourceLanguage} onPress={() => setPicker('source')} />
+      <Text style={styles.fieldLabel}>Język ojczysty</Text>
+      <LanguagePickerRow
+        language={native}
+        onPress={() => setPicker("source")}
+      />
     </View>
   );
 
   const targetBlock = (
     <View style={styles.langCol}>
-      <Text style={styles.fieldLabel}>I&apos;m learning</Text>
+      <Text style={styles.fieldLabel}>Język nauki</Text>
       <LanguagePickerRow
-        languageCode={draft.targetLanguage}
-        onPress={() => setPicker('target')}
-        emphasized
+        language={learning}
+        onPress={() => setPicker("target")}
+        emptyLabel="Wybierz język"
       />
     </View>
   );
@@ -109,50 +272,118 @@ export default function OnboardingLanguagePairScreen() {
   const swapFab = (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel="Swap languages"
+      accessibilityLabel="Zamień języki miejscami"
+      android_ripple={ANDROID_RIPPLE_SURFACE}
       style={({ pressed }) => [styles.swapFab, pressed && styles.swapFabPressed]}
-      onPress={swapLanguages}>
+      onPress={swapLanguages}
+    >
       <Ionicons name="swap-horizontal" size={24} color={StitchColors.primary} />
     </Pressable>
   );
 
+  const pickerTitle =
+    picker === "source" ? "Język ojczysty" : "Język nauki";
+
   return (
-    <OnboardingStepChrome step={1} totalSteps={2}>
+    <OnboardingStepChrome step={1} totalSteps={3}>
       <View style={styles.root}>
         <View style={styles.blobTop} pointerEvents="none" />
         <View style={styles.blobBottom} pointerEvents="none" />
 
-        <Modal visible={picker !== null} animationType="fade" transparent onRequestClose={closePicker}>
+        <Modal
+          visible={picker !== null}
+          animationType="fade"
+          transparent
+          onRequestClose={closePicker}
+        >
           <Pressable style={styles.modalBackdrop} onPress={closePicker}>
-            <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
-              <Text style={styles.modalTitle}>
-                {picker === 'source' ? 'Native language' : 'Learning language'}
-              </Text>
-              {supportedLanguages.map((item) => (
-                <Pressable
-                  key={item.code}
-                  style={({ pressed }) => [styles.modalRow, pressed && styles.modalRowPressed]}
-                  onPress={() => applyLanguage(item.code)}>
-                  <Text style={styles.modalRowTitle}>{item.name}</Text>
-                  <Text style={styles.modalRowSub}>{item.endonym}</Text>
-                </Pressable>
-              ))}
+            <Pressable
+              style={styles.modalCard}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <View style={styles.modalIntro}>
+                <Text style={styles.modalTitle}>{pickerTitle}</Text>
+              </View>
+              <ScrollView
+                ref={languagePickerScrollRef}
+                style={styles.modalLanguageList}
+                keyboardShouldPersistTaps="handled"
+                removeClippedSubviews={false}
+                onLayout={onLanguagePickerLayout}
+                onContentSizeChange={onLanguagePickerContentSizeChange}
+                showsVerticalScrollIndicator={languagePickerNeedsScroll}
+                persistentScrollbar={
+                  languagePickerNeedsScroll && Platform.OS === "android"
+                }
+              >
+                {languages.map((item) => {
+                  const selected =
+                    picker === "source"
+                      ? draft.nativeLanguageId === item.id
+                      : draft.learningLanguageId === item.id;
+                  return (
+                    <Pressable
+                      key={item.id}
+                      android_ripple={ANDROID_RIPPLE_SURFACE}
+                      style={({ pressed }) => [
+                        styles.modalLanguageRow,
+                        selected && styles.modalLanguageRowSelected,
+                        pressed && styles.modalLanguageRowPressed,
+                      ]}
+                      onPress={() => selectLanguageInPicker(item.id)}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected }}
+                      accessibilityLabel={`${item.name}, ${item.code.toUpperCase()}`}
+                    >
+                      <View style={styles.modalLanguageFlagCell}>
+                        <LanguageFlagBadge code={item.code} />
+                      </View>
+                      <View style={styles.modalLanguageRowText}>
+                        <Text style={styles.modalLanguageName}>{item.name}</Text>
+                        <Text style={styles.modalLanguageCode}>
+                          {item.code.toUpperCase()}
+                        </Text>
+                      </View>
+                      <View style={styles.modalLanguageRowTrailing}>
+                        {selected ? (
+                          <Ionicons
+                            name="checkmark-circle"
+                            size={24}
+                            color={StitchColors.primary}
+                          />
+                        ) : null}
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+              <Pressable
+                hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
+                style={({ pressed }) => [
+                  styles.modalDone,
+                  linkPressStyle(pressed, false),
+                ]}
+                onPress={closePicker}
+              >
+                <Text style={styles.modalDoneText}>Gotowe</Text>
+              </Pressable>
             </Pressable>
           </Pressable>
         </Modal>
 
         <View style={styles.body}>
           <ScrollView
+            style={styles.scrollView}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.scrollInner}>
+            contentContainerStyle={styles.scrollInner}
+          >
             <View style={styles.headBlock}>
               <Text style={styles.title}>
-                Your linguistic <Text style={styles.titleAccent}>bridge.</Text>
+                Twój językowy <Text style={styles.titleAccent}>most.</Text>
               </Text>
               <Text style={styles.lead}>
-                Select the native language you&apos;re comfortable with and the target language you want to
-                master.
+                Wybierz język ojczysty i język, którego chcesz się uczyć.
               </Text>
             </View>
 
@@ -163,29 +394,28 @@ export default function OnboardingLanguagePairScreen() {
                 <View style={styles.wideCol}>{targetBlock}</View>
               </View>
             ) : (
-              <>
+              <View style={styles.langPairColumn}>
                 {sourceBlock}
                 <View style={styles.swapSlotNarrow}>{swapFab}</View>
                 {targetBlock}
-              </>
+              </View>
             )}
-
-            {!canContinue ? (
-              <Text style={styles.warning}>Pick two different languages to continue.</Text>
-            ) : null}
           </ScrollView>
 
           <Pressable
-            onPress={() => router.push('/(onboarding)/level')}
+            onPress={() => router.push("/(onboarding)/level")}
             android_ripple={ANDROID_RIPPLE_PRIMARY}
             style={({ pressed }) => [
               styles.primaryButton,
-              { marginBottom: Math.max(insets.bottom, 10) },
+              {
+                marginBottom: Math.max(insets.bottom, 16),
+              },
               !canContinue && styles.primaryButtonDisabled,
               primarySolidPressStyle(pressed, !canContinue),
             ]}
-            disabled={!canContinue}>
-            <Text style={styles.primaryButtonText}>Continue</Text>
+            disabled={!canContinue}
+          >
+            <Text style={styles.primaryButtonText}>Dalej</Text>
             <Ionicons name="arrow-forward" size={20} color={StitchColors.onPrimary} />
           </Pressable>
         </View>
@@ -199,35 +429,45 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   blobTop: {
-    position: 'absolute',
+    position: "absolute",
     top: -80,
     right: -80,
     width: 320,
     height: 320,
     borderRadius: 160,
-    backgroundColor: 'rgba(68, 86, 186, 0.07)',
+    backgroundColor: "rgba(68, 86, 186, 0.07)",
   },
   blobBottom: {
-    position: 'absolute',
+    position: "absolute",
     bottom: -72,
     left: -72,
     width: 240,
     height: 240,
     borderRadius: 120,
-    backgroundColor: 'rgba(40, 108, 52, 0.06)',
+    backgroundColor: "rgba(40, 108, 52, 0.06)",
   },
   body: {
     flex: 1,
     paddingHorizontal: 24,
   },
+  scrollView: {
+    flex: 1,
+  },
   scrollInner: {
     flexGrow: 1,
-    paddingBottom: 16,
+    paddingTop: 4,
+    paddingBottom: 12,
+    /** Tylko odstęp nagłówek → grupa języków; same dropdowny są w `langPairColumn`. */
     gap: 22,
   },
+  langPairColumn: {
+    width: "100%",
+    gap: 12,
+  },
   headBlock: {
-    gap: 14,
+    gap: 12,
     marginBottom: 4,
+    paddingRight: 4,
   },
   title: {
     fontSize: 30,
@@ -237,7 +477,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.6,
   },
   titleAccent: {
-    fontStyle: 'italic',
+    fontStyle: "italic",
     color: StitchColors.secondary,
   },
   lead: {
@@ -248,58 +488,61 @@ const styles = StyleSheet.create({
     maxWidth: 520,
   },
   wideRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   wideCol: {
     flex: 1,
     minWidth: 0,
   },
   langCol: {
-    gap: 10,
+    gap: 8,
   },
   fieldLabel: {
     fontSize: 11,
     fontFamily: StitchFonts.label,
-    fontWeight: '600',
+    fontWeight: "600",
     color: StitchColors.onSurfaceVariant,
     letterSpacing: 2.4,
-    textTransform: 'uppercase',
-    paddingLeft: 6,
+    textTransform: "uppercase",
+    paddingLeft: 4,
+    marginBottom: 2,
   },
   selectorRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    width: '100%',
-    paddingVertical: 18,
-    paddingHorizontal: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    width: "100%",
+    minHeight: 72,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
     borderRadius: StitchRadius.lg,
-    backgroundColor: StitchColors.surfaceContainerLow,
-  },
-  selectorRowEmphasized: {
-    backgroundColor: StitchColors.surfaceContainerLow,
-    borderWidth: 2,
-    borderColor: 'rgba(68, 86, 186, 0.22)',
+    backgroundColor: StitchColors.surfaceContainerLowest,
+    shadowColor: StitchColors.onSurface,
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
   selectorRowPressed: {
-    backgroundColor: StitchColors.surfaceContainerLowest,
+    backgroundColor: StitchColors.surface,
   },
-  selectorAvatar: {
+  selectorFlagCell: {
     width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: StitchColors.surfaceContainerHighest,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
   },
-  selectorAvatarText: {
-    fontSize: 11,
-    fontFamily: StitchFonts.bodySemi,
-    color: StitchColors.onSurfaceVariant,
-    letterSpacing: 0.5,
+  selectorFlagPlaceholder: {
+    width: 36,
+    height: 24,
+    borderRadius: 4,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: `${StitchColors.outlineVariant}80`,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: StitchColors.surfaceContainerLowest,
   },
   selectorTextCol: {
     flex: 1,
@@ -311,47 +554,59 @@ const styles = StyleSheet.create({
     color: StitchColors.onSurface,
     marginBottom: 2,
   },
+  selectorTitlePlaceholder: {
+    fontSize: 15,
+    lineHeight: 20,
+    fontFamily: StitchFonts.bodyMedium,
+    color: StitchColors.outlineVariant,
+    fontStyle: "italic",
+    letterSpacing: 0.15,
+  },
   selectorSubtitle: {
     fontSize: 12,
     fontFamily: StitchFonts.body,
     color: StitchColors.onSurfaceVariant,
   },
+  selectorSubtitlePlaceholder: {
+    fontSize: 11,
+    color: StitchColors.outlineVariant,
+    letterSpacing: 0.2,
+  },
   swapSlot: {
-    paddingBottom: 28,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
+    alignSelf: "stretch",
+    paddingHorizontal: 2,
+    minWidth: 56,
   },
   swapSlotNarrow: {
-    alignItems: 'center',
-    marginVertical: 4,
+    alignItems: "center",
+    alignSelf: "center",
+    paddingVertical: 4,
+    width: "100%",
   },
   swapFab: {
     width: 52,
     height: 52,
     borderRadius: 26,
     backgroundColor: StitchColors.surfaceContainerLowest,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     shadowColor: StitchColors.onSurface,
-    shadowOpacity: 0.1,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 4,
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
   swapFabPressed: {
-    opacity: 0.88,
-    transform: [{ scale: 0.96 }],
-  },
-  warning: {
-    fontFamily: StitchFonts.body,
-    color: StitchColors.error,
-    fontSize: 14,
+    backgroundColor: StitchColors.surface,
   },
   primaryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     gap: 10,
+    marginTop: 12,
     backgroundColor: StitchColors.primary,
     borderRadius: StitchRadius.lg,
     paddingVertical: 18,
@@ -369,48 +624,85 @@ const styles = StyleSheet.create({
     color: StitchColors.onPrimary,
     fontFamily: StitchFonts.headline,
     fontSize: 18,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(15, 20, 25, 0.45)',
-    justifyContent: 'center',
+    backgroundColor: "rgba(15, 20, 25, 0.45)",
+    justifyContent: "center",
     padding: 24,
   },
   modalCard: {
     borderRadius: StitchRadius.lg,
     backgroundColor: StitchColors.surfaceContainerLowest,
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    maxWidth: 400,
-    alignSelf: 'center',
-    width: '100%',
-    gap: 4,
+    padding: 22,
+    gap: 18,
+    maxWidth: 420,
+    alignSelf: "center",
+    width: "100%",
+  },
+  modalIntro: {
+    gap: 6,
   },
   modalTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontFamily: StitchFonts.headline,
     color: StitchColors.onSurface,
-    paddingHorizontal: 14,
-    paddingBottom: 8,
   },
-  modalRow: {
-    paddingVertical: 14,
-    paddingHorizontal: 14,
+  modalLanguageList: {
+    maxHeight: 340,
+    marginHorizontal: -4,
+  },
+  modalLanguageRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 12,
     borderRadius: StitchRadius.md,
+    gap: 12,
+    marginBottom: 4,
   },
-  modalRowPressed: {
+  modalLanguageRowSelected: {
     backgroundColor: StitchColors.surfaceContainerLow,
   },
-  modalRowTitle: {
+  modalLanguageRowPressed: {
+    backgroundColor: StitchColors.surfaceContainer,
+  },
+  modalLanguageFlagCell: {
+    width: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  modalLanguageRowText: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  modalLanguageName: {
     fontSize: 16,
     fontFamily: StitchFonts.bodySemi,
     color: StitchColors.onSurface,
   },
-  modalRowSub: {
-    fontSize: 13,
+  modalLanguageCode: {
+    fontSize: 12,
     fontFamily: StitchFonts.body,
     color: StitchColors.onSurfaceVariant,
-    marginTop: 2,
+    letterSpacing: 0.5,
+  },
+  modalLanguageRowTrailing: {
+    width: 28,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalDone: {
+    alignSelf: "flex-end",
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+  },
+  modalDoneText: {
+    fontSize: 16,
+    fontFamily: StitchFonts.bodySemi,
+    color: StitchColors.primary,
   },
 });

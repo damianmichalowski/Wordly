@@ -86,6 +86,7 @@ function RootNavigator() {
     <ThemeProvider value={colorScheme === 'dark' ? WordlyNavigationDark : WordlyNavigationLight}>
       <Stack
         screenOptions={{
+          headerShown: false,
           contentStyle: {
             backgroundColor:
               colorScheme === 'dark' ? WordlyNavigationDark.colors.background : StitchColors.surface,
@@ -94,7 +95,7 @@ function RootNavigator() {
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="(onboarding)" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="word/[senseId]" options={{ headerShown: false }} />
+        <Stack.Screen name="word/[wordId]" options={{ headerShown: false }} />
         <Stack.Screen name="revision-session-complete" options={{ headerShown: false }} />
       </Stack>
     </ThemeProvider>

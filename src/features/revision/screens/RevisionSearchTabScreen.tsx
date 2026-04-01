@@ -58,7 +58,7 @@ export default function RevisionSearchTabScreen() {
         index={index}
         activeCard={activeCard}
         isFlipped={isFlipped}
-        exitFlashcards={exitFlashcards}
+        onAbortSession={exitFlashcards}
         flip={flip}
         next={next}
         previous={previous}
@@ -72,7 +72,9 @@ export default function RevisionSearchTabScreen() {
       sortPrefs={sortPrefs}
       onSortPrefsChange={setRevisionSortPrefs}
       onStartFlashcards={startFlashcards}
-      onOpenWord={(w) => router.push(`/word/${w.id}?from=search`)}
+      onOpenWord={(w) => router.push(`/word/${w.id}?from=library`)}
+      showUnlockEmptyState
+      onUnlockPrimaryPress={() => router.push('/(tabs)/home')}
       headerTitle="Biblioteka"
       showFlashcardHero={false}
     />

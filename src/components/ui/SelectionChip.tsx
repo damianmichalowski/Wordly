@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Text } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
   ANDROID_RIPPLE_PRIMARY,
@@ -9,6 +9,8 @@ import { StitchColors, StitchFonts, StitchRadius } from '@/src/theme/wordlyStitc
 
 export type SelectionChipProps = {
   label: string;
+  meta?: string;
+  tag?: string;
   active: boolean;
   onPress: () => void;
   disabled?: boolean;
@@ -18,7 +20,14 @@ export type SelectionChipProps = {
  * Pill-style toggle used for language / level / policy choices.
  * Visuals match the Wordly “Stitch” theme used in onboarding and settings.
  */
-export function SelectionChip({ label, active, onPress, disabled }: SelectionChipProps) {
+export function SelectionChip({
+  label,
+  meta,
+  tag,
+  active,
+  onPress,
+  disabled,
+}: SelectionChipProps) {
   return (
     <Pressable
       onPress={onPress}
@@ -30,7 +39,25 @@ export function SelectionChip({ label, active, onPress, disabled }: SelectionChi
         disabled && styles.chipDisabled,
         surfacePressStyle(pressed, Boolean(disabled)),
       ]}>
-      <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
+      <View style={styles.content}>
+        <View style={styles.topRow}>
+          <Text style={[styles.chipText, active && styles.chipTextActive]}>
+            {label}
+          </Text>
+          {tag ? (
+            <View style={[styles.tag, active && styles.tagActive]}>
+              <Text style={[styles.tagText, active && styles.tagTextActive]}>
+                {tag}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+        {meta ? (
+          <Text style={[styles.metaText, active && styles.metaTextActive]}>
+            {meta}
+          </Text>
+        ) : null}
+      </View>
     </Pressable>
   );
 }
@@ -44,6 +71,15 @@ const styles = StyleSheet.create({
     borderRadius: StitchRadius.full,
     backgroundColor: StitchColors.surfaceContainerHigh,
   },
+  content: {
+    gap: 2,
+  },
+  topRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
   chipActive: {
     backgroundColor: StitchColors.primary,
   },
@@ -55,6 +91,32 @@ const styles = StyleSheet.create({
     color: StitchColors.onSurface,
   },
   chipTextActive: {
+    color: StitchColors.onPrimary,
+  },
+  metaText: {
+    fontFamily: StitchFonts.body,
+    fontSize: 12,
+    color: StitchColors.onSurfaceVariant,
+  },
+  metaTextActive: {
+    color: StitchColors.onPrimary,
+    opacity: 0.85,
+  },
+  tag: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: StitchRadius.full,
+    backgroundColor: StitchColors.surfaceContainerLowest,
+  },
+  tagActive: {
+    backgroundColor: "rgba(255,255,255,0.18)",
+  },
+  tagText: {
+    fontFamily: StitchFonts.label,
+    fontSize: 11,
+    color: StitchColors.onSurfaceVariant,
+  },
+  tagTextActive: {
     color: StitchColors.onPrimary,
   },
 });

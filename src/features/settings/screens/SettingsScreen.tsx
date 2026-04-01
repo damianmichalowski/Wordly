@@ -1,78 +1,72 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from "@expo/vector-icons";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ElementRef,
+} from "react";
 import {
   ActivityIndicator,
   Alert,
-  DynamicColorIOS,
+  LayoutAnimation,
   Modal,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  UIManager,
   useWindowDimensions,
   View,
-} from 'react-native';
-import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+  type LayoutChangeEvent,
+} from "react-native";
+import Animated, { FadeIn } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { ScreenHeader } from '@/src/components/layout/ScreenHeader';
-import { CenteredMessageCta } from '@/src/components/ui/CenteredMessageCta';
+import { ScreenHeader } from "@/src/components/layout/ScreenHeader";
+import { CenteredMessageCta } from "@/src/components/ui/CenteredMessageCta";
 import {
   ANDROID_RIPPLE_PRIMARY,
   ANDROID_RIPPLE_SURFACE,
   linkPressStyle,
   primarySolidPressStyle,
-} from '@/src/components/ui/interaction';
-import { SelectionChip } from '@/src/components/ui/SelectionChip';
-import { supportedLanguages } from '@/src/constants/languages';
-import { useDailyWord } from '@/src/features/dailyWord/useDailyWord';
-import { useSettings } from '@/src/features/settings/useSettings';
-import { useAppBootstrap } from '@/src/hooks/useAppBootstrap';
-import { getSupabaseClient, hasSupabaseEnv } from '@/src/lib/supabase/client';
-import { signOutApp } from '@/src/services/auth/socialAuth';
-import { clearOnboardingCompletionFlag } from '@/src/services/storage/onboardingStorage';
-import { cefrLevels, type CefrLevel } from '@/src/types/cefr';
-import type { DisplayLevelPolicy } from '@/src/types/profile';
-import { StitchColors, StitchFonts, StitchRadius } from '@/src/theme/wordlyStitchTheme';
+} from "@/src/components/ui/interaction";
+import { LearnTrackModeSegment } from "@/src/components/ui/LearnTrackModeSegment";
+import { progressBarFillPercent } from "@/src/components/ui/LearningTrackOptionRow";
+import { TrackModeTile } from "@/src/components/ui/TrackModeTile";
+import { WidgetHomePreviewCard } from "@/src/components/ui/WidgetHomePreviewCard";
+import { translationLinesForWidget } from "@/src/services/widgets/widgetSurfaceService";
+import type { LearningModeType } from "@/src/features/profile/types/profile.types";
+import { useDailyWord } from "@/src/features/daily-word/hooks/useDailyWord";
+import { getAccountEmailOrName } from "@/src/features/profile/services/profileAccount.service";
+import { LanguageFlagBadge } from "@/src/features/settings/components/LanguageFlagBadge";
+import { getLearningLevelShortDescription } from "@/src/features/settings/learningLevelCopy";
+import { useSettings } from "@/src/features/settings/useSettings";
+import { useAppBootstrap } from "@/src/hooks/useAppBootstrap";
+import { hasSupabaseEnv } from "@/src/lib/supabase/client";
+import { signOutApp } from "@/src/services/auth/socialAuth";
+import { clearOnboardingCompletionFlag } from "@/src/services/storage/onboardingStorage";
+import {
+  StitchColors,
+  StitchFonts,
+  StitchRadius,
+} from "@/src/theme/wordlyStitchTheme";
 
-/** Kolory jak `Label` / `SecondaryLabel` w iOS (widżet SwiftUI używa `.primary` / `.secondary`). */
-const widgetIosLabel =
-  Platform.OS === 'ios'
-    ? DynamicColorIOS({ light: '#000000', dark: '#FFFFFF' })
-    : StitchColors.onSurface;
-const widgetIosSecondaryLabel =
-  Platform.OS === 'ios'
-    ? DynamicColorIOS({ light: 'rgba(60, 60, 67, 0.6)', dark: 'rgba(235, 235, 245, 0.6)' })
-    : StitchColors.onSurfaceVariant;
-const widgetIosBackground =
-  Platform.OS === 'ios'
-    ? DynamicColorIOS({ light: '#FFFFFF', dark: '#1C1C1E' })
-    : StitchColors.surfaceContainerLowest;
+/** Tolerancja na zaokrąglenia layoutu, poniżej uznajemy, że treść „mieści się”. */
+const SCROLL_OVERFLOW_EPS_PX = 2;
 
-const POLICY_LABEL: Record<DisplayLevelPolicy, string> = {
-  'next-level': 'Slightly above level',
-  'same-level': 'Same as my level',
-  'advanced-mixed': 'Advanced mixed',
-};
-
-const CEFR_ROW_LABEL: Record<CefrLevel, string> = {
-  A1: 'A1 (Beginner)',
-  A2: 'A2 (Elementary)',
-  B1: 'B1 (Intermediate)',
-  B2: 'B2 (Upper intermediate)',
-  C1: 'C1 (Advanced)',
-  C2: 'C2 (Proficient)',
-};
-
-type PickerKey = 'source' | 'target' | 'level' | 'policy' | null;
+type PickerKey = "nativeLanguage" | "learningLanguage" | null;
 
 function formatSince(iso: string): string {
   try {
     const d = new Date(iso);
-    return d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+    return d.toLocaleDateString(undefined, { month: "long", year: "numeric" });
   } catch {
-    return '';
+    return "";
   }
 }
 
@@ -80,30 +74,30 @@ function formatSince(iso: string): string {
 function getProfileInitials(displayName: string): string {
   const s = displayName.trim();
   if (!s) {
-    return 'W';
+    return "W";
   }
-  if (s.includes('@')) {
-    const local = (s.split('@')[0] ?? '').trim();
+  if (s.includes("@")) {
+    const local = (s.split("@")[0] ?? "").trim();
     const segments = local.split(/[._\-+]+/).filter(Boolean);
     if (segments.length >= 2) {
-      const a = segments[0]?.charAt(0) ?? '';
-      const b = segments[segments.length - 1]?.charAt(0) ?? '';
-      return `${a}${b}`.toUpperCase() || 'W';
+      const a = segments[0]?.charAt(0) ?? "";
+      const b = segments[segments.length - 1]?.charAt(0) ?? "";
+      return `${a}${b}`.toUpperCase() || "W";
     }
-    const chunk = (local || 'w').slice(0, 2);
+    const chunk = (local || "w").slice(0, 2);
     return chunk.toUpperCase();
   }
   const parts = s.split(/\s+/).filter(Boolean);
   if (parts.length >= 2) {
-    const a = parts[0]?.charAt(0) ?? '';
-    const b = parts[parts.length - 1]?.charAt(0) ?? '';
+    const a = parts[0]?.charAt(0) ?? "";
+    const b = parts[parts.length - 1]?.charAt(0) ?? "";
     return `${a}${b}`.toUpperCase();
   }
   const word = parts[0] ?? s;
   if (word.length >= 2) {
     return word.slice(0, 2).toUpperCase();
   }
-  return (word.charAt(0) || 'W').toUpperCase();
+  return (word.charAt(0) || "W").toUpperCase();
 }
 
 function StitchSettingsRow({
@@ -130,7 +124,8 @@ function StitchSettingsRow({
         styles.prefRow,
         pressed && !disabled && styles.prefRowPressed,
         disabled && styles.prefRowDisabled,
-      ]}>
+      ]}
+    >
       <View style={styles.prefRowLeft}>
         <View style={styles.iconBox}>
           <Ionicons name={icon} size={22} color={StitchColors.primary} />
@@ -144,7 +139,11 @@ function StitchSettingsRow({
         <Text style={styles.prefValue} numberOfLines={1}>
           {value}
         </Text>
-        <Ionicons name="chevron-forward" size={20} color={StitchColors.onSurfaceVariant} />
+        <Ionicons
+          name="chevron-forward"
+          size={20}
+          color={StitchColors.onSurfaceVariant}
+        />
       </View>
     </Pressable>
   );
@@ -152,6 +151,25 @@ function StitchSettingsRow({
 
 export default function SettingsScreen() {
   const router = useRouter();
+  const { focus: focusParam } = useLocalSearchParams<{
+    focus?: string | string[];
+  }>();
+  const focus =
+    typeof focusParam === "string"
+      ? focusParam
+      : Array.isArray(focusParam)
+        ? focusParam[0]
+        : undefined;
+
+  const settingsMainScrollRef = useRef<ElementRef<typeof ScrollView>>(null);
+  const [learningModeSectionY, setLearningModeSectionY] = useState<
+    number | null
+  >(null);
+
+  const onLearningModeSectionLayout = useCallback((e: LayoutChangeEvent) => {
+    setLearningModeSectionY(e.nativeEvent.layout.y);
+  }, []);
+
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
   /** Kwadrat jak `systemSmall`: szerokość = wysokość; marginesy scroll (48) + padding ramki podglądu (56). */
@@ -160,114 +178,274 @@ export default function SettingsScreen() {
   const {
     isLoading,
     isSaving,
-    profile,
-    sourceLanguage,
-    targetLanguage,
-    currentLevel,
-    displayLevelPolicy,
-    displayLevel,
+    options,
+    optionsProgress,
+    settings,
+    nativeLanguageId,
+    learningLanguageId,
+    learningModeType,
+    learningLevel,
+    selectedCategoryId,
+    nativeLanguage,
+    learningLanguage,
     canSave,
     error,
-    setSourceLanguage,
-    setTargetLanguage,
-    setCurrentLevel,
-    setDisplayLevelPolicy,
+    setNativeLanguageId,
+    setLearningLanguageId,
+    setLearningModeType,
+    setLearningLevel,
+    setSelectedCategoryId,
     save,
+    refresh,
   } = useSettings();
 
-  const { snapshot: dailySnapshot } = useDailyWord();
+  useFocusEffect(
+    useCallback(() => {
+      void refresh();
+    }, [refresh]),
+  );
+
+  useEffect(() => {
+    if (focus !== "learningMode") return;
+    if (isLoading || !settings) return;
+    if (learningModeSectionY == null) return;
+    const id = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        settingsMainScrollRef.current?.scrollTo({
+          y: Math.max(0, learningModeSectionY - 16),
+          animated: true,
+        });
+        router.setParams({ focus: undefined });
+      });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [focus, isLoading, settings, learningModeSectionY, router]);
+
+  const { data: dailyWord } = useDailyWord();
   const [picker, setPicker] = useState<PickerKey>(null);
   const [accountEmail, setAccountEmail] = useState<string | null>(null);
+  /** Rzeczywista szerokość siatki, dokładnie 2 kolumny: (szerokość − gap) / 2. */
+  const [gridInnerWidth, setGridInnerWidth] = useState(0);
+
+  const languagePickerScrollRef = useRef<ElementRef<typeof ScrollView>>(null);
+  const [languagePickerScroll, setLanguagePickerScroll] = useState({
+    layoutH: 0,
+    contentH: 0,
+  });
+  const [settingsScroll, setSettingsScroll] = useState({
+    layoutH: 0,
+    contentH: 0,
+  });
+
+  const languagePickerNeedsScroll =
+    languagePickerScroll.layoutH > 0 &&
+    languagePickerScroll.contentH >
+      languagePickerScroll.layoutH + SCROLL_OVERFLOW_EPS_PX;
+
+  const settingsNeedsScroll =
+    settingsScroll.layoutH > 0 &&
+    settingsScroll.contentH > settingsScroll.layoutH + SCROLL_OVERFLOW_EPS_PX;
+
+  useEffect(() => {
+    setLanguagePickerScroll({ layoutH: 0, contentH: 0 });
+  }, [picker]);
+
+  useEffect(() => {
+    if (!picker || !languagePickerNeedsScroll || Platform.OS !== "ios") {
+      return;
+    }
+    const id = requestAnimationFrame(() => {
+      languagePickerScrollRef.current?.flashScrollIndicators();
+    });
+    return () => cancelAnimationFrame(id);
+  }, [picker, languagePickerNeedsScroll]);
+
+  const onLanguagePickerLayout = useCallback((e: LayoutChangeEvent) => {
+    const layoutH = e.nativeEvent.layout.height;
+    setLanguagePickerScroll((prev) => ({
+      ...prev,
+      layoutH,
+    }));
+  }, []);
+
+  const onLanguagePickerContentSizeChange = useCallback(
+    (_w: number, h: number) => {
+      setLanguagePickerScroll((prev) => ({ ...prev, contentH: h }));
+    },
+    [],
+  );
+
+  const onSettingsScrollLayout = useCallback((e: LayoutChangeEvent) => {
+    const layoutH = e.nativeEvent.layout.height;
+    setSettingsScroll((prev) => ({
+      ...prev,
+      layoutH,
+    }));
+  }, []);
+
+  const onSettingsContentSizeChange = useCallback((_: number, h: number) => {
+    setSettingsScroll((prev) => ({ ...prev, contentH: h }));
+  }, []);
 
   useEffect(() => {
     if (!hasSupabaseEnv()) {
       return;
     }
     void (async () => {
-      const { data } = await getSupabaseClient().auth.getUser();
-      const email = data.user?.email ?? data.user?.user_metadata?.full_name;
-      setAccountEmail(typeof email === 'string' ? email : null);
+      const email = await getAccountEmailOrName();
+      setAccountEmail(email);
     })();
+  }, []);
+
+  useEffect(() => {
+    if (
+      Platform.OS === "android" &&
+      UIManager.setLayoutAnimationEnabledExperimental
+    ) {
+      UIManager.setLayoutAnimationEnabledExperimental(true);
+    }
   }, []);
 
   const chipDisabled = isSaving;
 
-  const sourceName = useMemo(
-    () => supportedLanguages.find((l) => l.code === sourceLanguage)?.name ?? sourceLanguage,
-    [sourceLanguage],
+  const handleTrackModeChange = useCallback(
+    (next: LearningModeType) => {
+      if (next === learningModeType) {
+        return;
+      }
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setLearningModeType(next);
+    },
+    [learningModeType, setLearningModeType],
   );
-  const targetName = useMemo(
-    () => supportedLanguages.find((l) => l.code === targetLanguage)?.name ?? targetLanguage,
-    [targetLanguage],
-  );
+
+  const nativeName = nativeLanguage?.name ?? "…";
+  const learningName = learningLanguage?.name ?? "…";
+
+  const trackProgressMaps = useMemo(() => {
+    const difficulty = new Map(
+      (optionsProgress?.difficulty ?? []).map((d) => [d.key, d]),
+    );
+    const categories = new Map(
+      (optionsProgress?.categories ?? []).map((c) => [c.id, c]),
+    );
+    const getPct = (knownCount: number, availableCount: number) =>
+      availableCount > 0
+        ? Math.round((knownCount / availableCount) * 100)
+        : 0;
+    return { difficulty, categories, getPct };
+  }, [optionsProgress]);
+
+  const TILE_GAP = 12;
+
+  const modeTileWidth = useMemo(() => {
+    if (gridInnerWidth > 0) {
+      return Math.max(1, Math.floor((gridInnerWidth - TILE_GAP) / 2));
+    }
+    const inner = windowWidth - 48 - 32;
+    return Math.max(1, Math.floor((inner - TILE_GAP) / 2));
+  }, [gridInnerWidth, windowWidth]);
+
+  const onModeGridLayout = useCallback((e: LayoutChangeEvent) => {
+    const w = e.nativeEvent.layout.width;
+    if (w > 0) {
+      setGridInnerWidth(Math.round(w));
+    }
+  }, []);
 
   const closePicker = useCallback(() => setPicker(null), []);
 
   const pickerModal = useMemo(() => {
-    if (!picker || !profile) {
+    if (!picker || !options) {
       return null;
     }
 
     const title =
-      picker === 'source'
-        ? 'Native language'
-        : picker === 'target'
-          ? 'Learning language'
-          : picker === 'level'
-            ? 'My level (CEFR)'
-            : 'Difficulty';
+      picker === "nativeLanguage" ? "Język ojczysty" : "Język nauki";
 
     return (
-      <Modal visible animationType="fade" transparent onRequestClose={closePicker}>
+      <Modal
+        visible
+        animationType="fade"
+        transparent
+        onRequestClose={closePicker}
+      >
         <Pressable style={styles.modalBackdrop} onPress={closePicker}>
-          <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.modalTitle}>{title}</Text>
-            <View style={styles.modalChips}>
-              {picker === 'source' || picker === 'target'
-                ? supportedLanguages.map((item) => (
-                    <SelectionChip
-                      key={item.code}
-                      label={item.name}
-                      active={
-                        picker === 'source' ? sourceLanguage === item.code : targetLanguage === item.code
-                      }
-                      disabled={chipDisabled}
-                      onPress={() =>
-                        picker === 'source' ? setSourceLanguage(item.code) : setTargetLanguage(item.code)
-                      }
-                    />
-                  ))
-                : picker === 'level'
-                  ? cefrLevels.map((level) => (
-                      <SelectionChip
-                        key={level}
-                        label={level}
-                        active={currentLevel === level}
-                        disabled={chipDisabled}
-                        onPress={() => setCurrentLevel(level)}
-                      />
-                    ))
-                  : (
-                      [
-                        ['next-level', 'Next level'] as const,
-                        ['same-level', 'Same level'] as const,
-                        ['advanced-mixed', 'Advanced mixed'] as const,
-                      ] as const
-                    ).map(([key, label]) => (
-                      <SelectionChip
-                        key={key}
-                        label={label}
-                        active={displayLevelPolicy === key}
-                        disabled={chipDisabled}
-                        onPress={() => setDisplayLevelPolicy(key)}
-                      />
-                    ))}
+          <Pressable
+            style={styles.modalCard}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={styles.modalIntro}>
+              <Text style={styles.modalTitle}>{title}</Text>
             </View>
+            <ScrollView
+              ref={languagePickerScrollRef}
+              style={styles.modalLanguageList}
+              keyboardShouldPersistTaps="handled"
+              removeClippedSubviews={false}
+              onLayout={onLanguagePickerLayout}
+              onContentSizeChange={onLanguagePickerContentSizeChange}
+              showsVerticalScrollIndicator={languagePickerNeedsScroll}
+              persistentScrollbar={
+                languagePickerNeedsScroll && Platform.OS === "android"
+              }
+            >
+              {options.languages.map((item) => {
+                const selected =
+                  picker === "nativeLanguage"
+                    ? nativeLanguageId === item.id
+                    : learningLanguageId === item.id;
+                return (
+                  <Pressable
+                    key={item.id}
+                    disabled={chipDisabled}
+                    android_ripple={ANDROID_RIPPLE_SURFACE}
+                    style={({ pressed }) => [
+                      styles.modalLanguageRow,
+                      selected && styles.modalLanguageRowSelected,
+                      pressed && !chipDisabled && styles.modalLanguageRowPressed,
+                      chipDisabled && styles.prefRowDisabled,
+                    ]}
+                    onPress={() =>
+                      picker === "nativeLanguage"
+                        ? setNativeLanguageId(item.id)
+                        : setLearningLanguageId(item.id)
+                    }
+                    accessibilityRole="button"
+                    accessibilityState={{ selected, disabled: chipDisabled }}
+                    accessibilityLabel={`${item.name}, ${item.code.toUpperCase()}`}
+                  >
+                    <View style={styles.modalLanguageFlagCell}>
+                      <LanguageFlagBadge code={item.code} />
+                    </View>
+                    <View style={styles.modalLanguageRowText}>
+                      <Text style={styles.modalLanguageName}>{item.name}</Text>
+                      <Text style={styles.modalLanguageCode}>
+                        {item.code.toUpperCase()}
+                      </Text>
+                    </View>
+                    <View style={styles.modalLanguageRowTrailing}>
+                      {selected ? (
+                        <Ionicons
+                          name="checkmark-circle"
+                          size={24}
+                          color={StitchColors.primary}
+                        />
+                      ) : null}
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
             <Pressable
               hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
-              style={({ pressed }) => [styles.modalDone, linkPressStyle(pressed, false)]}
-              onPress={closePicker}>
-              <Text style={styles.modalDoneText}>Done</Text>
+              style={({ pressed }) => [
+                styles.modalDone,
+                linkPressStyle(pressed, false),
+              ]}
+              onPress={closePicker}
+            >
+              <Text style={styles.modalDoneText}>Gotowe</Text>
             </Pressable>
           </Pressable>
         </Pressable>
@@ -275,25 +453,27 @@ export default function SettingsScreen() {
     );
   }, [
     picker,
-    profile,
+    options,
     closePicker,
-    sourceLanguage,
-    targetLanguage,
-    currentLevel,
-    displayLevelPolicy,
+    nativeLanguageId,
+    learningLanguageId,
     chipDisabled,
-    setSourceLanguage,
-    setTargetLanguage,
-    setCurrentLevel,
-    setDisplayLevelPolicy,
+    setNativeLanguageId,
+    setLearningLanguageId,
+    languagePickerNeedsScroll,
+    onLanguagePickerLayout,
+    onLanguagePickerContentSizeChange,
   ]);
 
   const widgetPreview = useMemo(() => {
-    const w = dailySnapshot?.activeWord;
-    const word = w?.sourceText ?? 'Ephemeral';
-    const translation = w?.targetText ?? 'Lasting for a very short time.';
-    return { word, translation };
-  }, [dailySnapshot?.activeWord]);
+    const word = dailyWord?.details.lemma ?? "Hello";
+    const translations = translationLinesForWidget(dailyWord?.details.senses);
+    return {
+      word,
+      translations:
+        translations.length > 0 ? translations : ["cześć"],
+    };
+  }, [dailyWord?.details.lemma, dailyWord?.details.senses]);
 
   if (isLoading) {
     return (
@@ -303,91 +483,176 @@ export default function SettingsScreen() {
     );
   }
 
-  if (!profile) {
+  if (!settings) {
     return (
       <CenteredMessageCta
         variant="settings"
         title="Onboarding required"
         subtitle="Complete onboarding to manage your settings."
         primaryLabel="Go to onboarding"
-        onPrimaryPress={() => router.replace('/(onboarding)')}
+        onPrimaryPress={() => router.replace("/(onboarding)")}
       />
     );
   }
 
-  const displayName = accountEmail ?? 'Wordly learner';
-  const since = formatSince(profile.createdAt);
-  const subtitle =
-    since.length > 0
-      ? `Learning ${targetName} from ${sourceName} · since ${since}`
-      : `Learning ${targetName} from ${sourceName}`;
+  const displayName = accountEmail ?? "Wordly learner";
+  const since = formatSince(settings.created_at);
+  const profileSinceLine =
+    since.length > 0 ? `W aplikacji od ${since}` : "";
 
   return (
     <View style={styles.screen}>
       {pickerModal}
       <ScreenHeader title="Ustawienia" />
       <ScrollView
+        ref={settingsMainScrollRef}
         style={styles.scrollView}
         keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: 28 + insets.bottom }]}>
+        onLayout={onSettingsScrollLayout}
+        onContentSizeChange={onSettingsContentSizeChange}
+        showsVerticalScrollIndicator={settingsNeedsScroll}
+        persistentScrollbar={
+          settingsNeedsScroll && Platform.OS === "android"
+        }
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: 28 + insets.bottom },
+        ]}
+      >
         <View style={styles.profileCard}>
           <View style={styles.avatarWrap}>
             <View style={styles.avatarCircle}>
-              <Text style={styles.avatarInitials} numberOfLines={1} adjustsFontSizeToFit>
+              <Text
+                style={styles.avatarInitials}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+              >
                 {getProfileInitials(displayName)}
               </Text>
             </View>
           </View>
           <View style={styles.profileTextCol}>
             <Text style={styles.profileName}>{displayName}</Text>
-            <Text style={styles.profileSubtitle}>{subtitle}</Text>
-            <View style={styles.profilePills}>
-              <View style={styles.profilePill}>
-                <Text style={styles.profilePillText}>CEFR {currentLevel}</Text>
-              </View>
-              <View style={styles.profilePill}>
-                <Text style={styles.profilePillText}>Words at {displayLevel}</Text>
-              </View>
-            </View>
+            {profileSinceLine ? (
+              <Text style={styles.profileSubtitle}>{profileSinceLine}</Text>
+            ) : null}
           </View>
         </View>
 
-        <Text style={styles.sectionHeading}>Learning Preferences</Text>
+        <Text style={styles.sectionHeading}>Preferencje nauki</Text>
         <View style={styles.listGroupOuter}>
           <View style={styles.listGroupInner}>
             <StitchSettingsRow
               icon="language-outline"
-              title="Native Language"
-              subtitle="Used for translations and interface"
-              value={sourceName}
+              title="Język ojczysty"
+              subtitle="Tłumaczenia i interfejs"
+              value={nativeName}
               disabled={chipDisabled}
-              onPress={() => setPicker('source')}
+              onPress={() => setPicker("nativeLanguage")}
             />
             <StitchSettingsRow
               icon="book-outline"
-              title="Learning Language"
-              subtitle="The language you are mastering"
-              value={targetName}
+              title="Język nauki"
+              subtitle="Język, którego się uczysz"
+              value={learningName}
               disabled={chipDisabled}
-              onPress={() => setPicker('target')}
+              onPress={() => setPicker("learningLanguage")}
             />
-            <StitchSettingsRow
-              icon="stats-chart-outline"
-              title="My Level"
-              subtitle="CEFR standard proficiency"
-              value={CEFR_ROW_LABEL[currentLevel]}
+          </View>
+        </View>
+
+        <View
+          collapsable={false}
+          style={styles.learningModeSection}
+          onLayout={onLearningModeSectionLayout}
+        >
+          <Text
+            style={[styles.sectionHeading, styles.sectionHeadingLearningMode]}
+          >
+            Tryb nauki
+          </Text>
+          <View style={styles.trackPanelOuter}>
+            <LearnTrackModeSegment
+              value={learningModeType}
               disabled={chipDisabled}
-              onPress={() => setPicker('level')}
+              onChange={handleTrackModeChange}
             />
-            <StitchSettingsRow
-              icon="trending-up-outline"
-              title="Difficulty"
-              subtitle="Adapt content to your pace"
-              value={POLICY_LABEL[displayLevelPolicy]}
-              disabled={chipDisabled}
-              onPress={() => setPicker('policy')}
-            />
+            <Animated.View
+              key={learningModeType}
+              entering={FadeIn.duration(260)}
+              style={styles.modeGridWrap}
+            >
+              <View
+                style={styles.modeGrid}
+                onLayout={onModeGridLayout}
+              >
+                {options && learningModeType === "difficulty"
+                  ? options.learningLevels.map((lvl) => {
+                      const p = trackProgressMaps.difficulty.get(
+                        lvl.value as any,
+                      );
+                      const availableCount = p?.availableCount ?? 0;
+                      const knownCount = p?.knownCount ?? 0;
+                      const pct = trackProgressMaps.getPct(
+                        knownCount,
+                        availableCount,
+                      );
+                      const barFill = progressBarFillPercent(
+                        pct,
+                        availableCount,
+                      );
+                      const selected =
+                        learningModeType === "difficulty" &&
+                        learningLevel === (lvl.value as any);
+                      return (
+                        <TrackModeTile
+                          key={lvl.value}
+                          title={lvl.label}
+                          description={getLearningLevelShortDescription(
+                            lvl.value,
+                          )}
+                          selected={selected}
+                          disabled={chipDisabled}
+                          availableCount={availableCount}
+                          pct={pct}
+                          barFill={barFill}
+                          width={modeTileWidth}
+                          onPress={() => setLearningLevel(lvl.value as any)}
+                        />
+                      );
+                    })
+                  : options?.categories.map((cat) => {
+                      const p = trackProgressMaps.categories.get(cat.id);
+                      const availableCount = p?.availableCount ?? 0;
+                      const knownCount = p?.knownCount ?? 0;
+                      const pct = trackProgressMaps.getPct(
+                        knownCount,
+                        availableCount,
+                      );
+                      const barFill = progressBarFillPercent(
+                        pct,
+                        availableCount,
+                      );
+                      const selected =
+                        learningModeType === "category" &&
+                        selectedCategoryId === cat.id;
+                      return (
+                        <TrackModeTile
+                          key={cat.id}
+                          title={cat.name}
+                          description={cat.description}
+                          selected={selected}
+                          disabled={chipDisabled}
+                          availableCount={availableCount}
+                          pct={pct}
+                          barFill={barFill}
+                          width={modeTileWidth}
+                          onPress={() => setSelectedCategoryId(cat.id)}
+                        />
+                      );
+                    })}
+              </View>
+            </Animated.View>
           </View>
         </View>
 
@@ -401,11 +666,12 @@ export default function SettingsScreen() {
             primarySolidPressStyle(pressed, !canSave || isSaving),
           ]}
           onPress={save}
-          disabled={!canSave || isSaving}>
+          disabled={!canSave || isSaving}
+        >
           {isSaving ? (
             <ActivityIndicator color={StitchColors.onPrimary} />
           ) : (
-            <Text style={styles.primaryButtonText}>Save settings</Text>
+            <Text style={styles.primaryButtonText}>Zapisz ustawienia</Text>
           )}
         </Pressable>
 
@@ -413,34 +679,62 @@ export default function SettingsScreen() {
         <View style={styles.widgetGrid}>
           <View style={styles.widgetPreviewCanvas}>
             <Text style={styles.widgetPreviewLabel}>Home screen preview</Text>
-            <View style={[styles.widgetDevice, { width: widgetSquareSize, height: widgetSquareSize }]}>
-              <View style={styles.widgetDecorLayer} pointerEvents="none">
-                <View style={styles.widgetDecorBlobTop} />
-                <View style={styles.widgetDecorBlobBottom} />
-              </View>
-              <View style={styles.widgetStack}>
-                <Text style={styles.widgetBrand}>Wordly</Text>
-                <Text style={styles.widgetWord} numberOfLines={3}>
-                  {widgetPreview.word}
-                </Text>
-                <Text
-                  style={styles.widgetTranslation}
-                  numberOfLines={4}
-                  {...Platform.select({
-                    ios: { adjustsFontSizeToFit: true, minimumFontScale: 0.88 },
-                    default: {},
-                  })}
-                >
-                  {widgetPreview.translation}
-                </Text>
-              </View>
-            </View>
+            <WidgetHomePreviewCard
+              word={widgetPreview.word}
+              translations={widgetPreview.translations}
+              size={widgetSquareSize}
+            />
           </View>
           <View style={styles.widgetNote}>
-            <Text style={styles.widgetNoteText}>
-              The home screen widget updates when you save settings and reflects your current daily word when
-              available.
-            </Text>
+            <View style={styles.widgetRecommendedBanner}>
+              <View style={styles.widgetRecommendedBadge}>
+                <Text style={styles.widgetRecommendedBadgeText}>Zalecane</Text>
+              </View>
+              <Text style={styles.widgetNoteLead}>
+                Dodaj widżet Wordly na ekran główny, żeby mieć szybki podgląd dzisiejszego słowa bez
+                otwierania aplikacji.
+              </Text>
+            </View>
+            <View style={styles.widgetInstructionList}>
+              {Platform.OS === "ios" ? (
+                <>
+                  <View style={styles.widgetInstructionRow}>
+                    <Text style={styles.widgetInstructionIndex}>1</Text>
+                    <Text style={styles.widgetNoteInstructions}>
+                      Na ekranie głównym przytrzymaj pusty fragment pulpitu i wybierz „Edytuj ekran
+                      główny”.
+                    </Text>
+                  </View>
+                  <View style={styles.widgetInstructionRow}>
+                    <Text style={styles.widgetInstructionIndex}>2</Text>
+                    <Text style={styles.widgetNoteInstructions}>
+                      Stuknij „+” u góry po lewej.
+                    </Text>
+                  </View>
+                  <View style={styles.widgetInstructionRow}>
+                    <Text style={styles.widgetInstructionIndex}>3</Text>
+                    <Text style={styles.widgetNoteInstructions}>
+                      Wyszukaj Wordly, wybierz rozmiar widżetu i potwierdź „Dodaj widżet”.
+                    </Text>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <View style={styles.widgetInstructionRow}>
+                    <Text style={styles.widgetInstructionIndex}>1</Text>
+                    <Text style={styles.widgetNoteInstructions}>
+                      Przytrzymaj pusty fragment ekranu głównego.
+                    </Text>
+                  </View>
+                  <View style={styles.widgetInstructionRow}>
+                    <Text style={styles.widgetInstructionIndex}>2</Text>
+                    <Text style={styles.widgetNoteInstructions}>
+                      Otwórz bibliotekę widżetów, znajdź Wordly i dodaj widżet w wybranym rozmiarze.
+                    </Text>
+                  </View>
+                </>
+              )}
+            </View>
           </View>
         </View>
 
@@ -448,44 +742,62 @@ export default function SettingsScreen() {
         <View style={styles.accountCard}>
           {hasSupabaseEnv() ? (
             <Pressable
-              style={({ pressed }) => [styles.accountRow, pressed && styles.accountRowPressed]}
+              style={({ pressed }) => [
+                styles.accountRow,
+                pressed && styles.accountRowPressed,
+              ]}
               disabled={chipDisabled}
               onPress={() => {
                 Alert.alert(
-                  'Wyloguj się',
-                  'Zakończysz sesję na tym urządzeniu. Profil lokalny zostanie zachowany. Po ponownym logowaniu odzyskasz postęp.',
+                  "Wyloguj się",
+                  "Zakończysz sesję na tym urządzeniu. Profil lokalny zostanie zachowany. Po ponownym logowaniu odzyskasz postęp.",
                   [
-                    { text: 'Anuluj', style: 'cancel' },
+                    { text: "Anuluj", style: "cancel" },
                     {
-                      text: 'Wyloguj',
-                      style: 'destructive',
+                      text: "Wyloguj",
+                      style: "destructive",
                       onPress: () => {
                         void (async () => {
                           await signOutApp();
-                          router.replace('/(onboarding)');
+                          router.replace("/(onboarding)");
                         })();
                       },
                     },
                   ],
                 );
-              }}>
+              }}
+            >
               <View style={styles.accountRowLeft}>
-                <Ionicons name="log-out-outline" size={22} color={StitchColors.error} />
+                <Ionicons
+                  name="log-out-outline"
+                  size={22}
+                  color={StitchColors.error}
+                />
                 <Text style={styles.accountRowLabel}>Sign out</Text>
               </View>
             </Pressable>
           ) : null}
           <Pressable
-            style={({ pressed }) => [styles.accountRow, pressed && styles.accountRowPressed]}
+            style={({ pressed }) => [
+              styles.accountRow,
+              pressed && styles.accountRowPressed,
+            ]}
             onPress={() =>
               Alert.alert(
-                'Delete account',
-                'Account deletion is not available in the app yet. Contact support if you need to remove your data.',
+                "Delete account",
+                "Account deletion is not available in the app yet. Contact support if you need to remove your data.",
               )
-            }>
+            }
+          >
             <View style={styles.accountRowLeft}>
-              <Ionicons name="trash-outline" size={22} color={StitchColors.error} />
-              <Text style={[styles.accountRowLabel, styles.accountRowDanger]}>Delete account</Text>
+              <Ionicons
+                name="trash-outline"
+                size={22}
+                color={StitchColors.error}
+              />
+              <Text style={[styles.accountRowLabel, styles.accountRowDanger]}>
+                Delete account
+              </Text>
             </View>
           </Pressable>
         </View>
@@ -497,23 +809,24 @@ export default function SettingsScreen() {
               style={styles.devButton}
               onPress={() => {
                 Alert.alert(
-                  'Reset onboarding',
-                  'Clears the onboarding flag and opens the language step. For testing only.',
+                  "Reset onboarding",
+                  "Clears the onboarding flag and opens the language step. For testing only.",
                   [
-                    { text: 'Cancel', style: 'cancel' },
+                    { text: "Cancel", style: "cancel" },
                     {
-                      text: 'Reset',
+                      text: "Reset",
                       onPress: () => {
                         void (async () => {
                           await clearOnboardingCompletionFlag();
                           markOnboardingIncomplete();
-                          router.replace('/(onboarding)/language-pair');
+                          router.replace("/(onboarding)/language-pair");
                         })();
                       },
                     },
                   ],
                 );
-              }}>
+              }}
+            >
               <Text style={styles.devButtonText}>Reset onboarding (test)</Text>
             </Pressable>
           </View>
@@ -539,78 +852,86 @@ const styles = StyleSheet.create({
   },
   centered: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     padding: 24,
     gap: 10,
     backgroundColor: StitchColors.surface,
   },
   profileCard: {
-    flexDirection: 'column',
-    alignItems: 'center',
+    flexDirection: "column",
+    alignItems: "center",
     gap: 20,
     padding: 28,
     borderRadius: StitchRadius.lg,
     backgroundColor: StitchColors.surfaceContainerLow,
   },
   avatarWrap: {
-    alignSelf: 'center',
+    alignSelf: "center",
   },
   /** Jeden widok = jedno kółko (bez zagnieżdżonego kwadratu z tłem pod `overflow`). */
   avatarCircle: {
     width: 100,
     height: 100,
     borderRadius: 50,
-    overflow: 'hidden',
+    overflow: "hidden",
     backgroundColor: StitchColors.primaryContainer,
     borderWidth: 3,
-    borderColor: 'rgba(133, 150, 255, 0.42)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderColor: "rgba(133, 150, 255, 0.42)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   avatarInitials: {
     fontSize: 30,
     fontFamily: StitchFonts.headline,
     color: StitchColors.onPrimaryContainer,
     letterSpacing: 0.5,
-    textAlign: 'center',
+    textAlign: "center",
     includeFontPadding: false,
   },
   profileTextCol: {
-    width: '100%',
-    alignItems: 'center',
+    width: "100%",
+    alignItems: "center",
   },
   profileName: {
     fontSize: 20,
     fontFamily: StitchFonts.headline,
     color: StitchColors.onSurface,
     marginBottom: 4,
-    textAlign: 'center',
+    textAlign: "center",
   },
   profileSubtitle: {
     fontSize: 14,
     fontFamily: StitchFonts.body,
     color: StitchColors.onSurfaceVariant,
-    textAlign: 'center',
+    textAlign: "center",
     lineHeight: 20,
-    marginBottom: 12,
   },
-  profilePills: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 10,
+  /** Odtwarza `gap` z `scrollContent` między nagłówkiem a panelem (wcześej były osobnymi dziećmi ScrollView). */
+  learningModeSection: {
+    width: "100%",
+    gap: 24,
   },
-  profilePill: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: StitchRadius.full,
-    backgroundColor: StitchColors.surfaceContainerLowest,
+  trackPanelOuter: {
+    borderRadius: StitchRadius.lg,
+    backgroundColor: StitchColors.surfaceContainerLow,
+    padding: 16,
+    gap: 16,
+    borderWidth: 1,
+    borderColor: `${StitchColors.outlineVariant}33`,
   },
-  profilePillText: {
-    fontSize: 11,
-    fontFamily: StitchFonts.bodySemi,
-    color: StitchColors.onSurfaceVariant,
+  modeGridWrap: {
+    marginTop: 2,
+    width: "100%",
+  },
+  modeGrid: {
+    width: "100%",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    columnGap: 12,
+    rowGap: 12,
+    alignContent: "flex-start",
+    justifyContent: "flex-start",
   },
   sectionHeading: {
     fontSize: 17,
@@ -619,11 +940,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     marginBottom: -8,
   },
+  /** W sekcji z `learningModeSection` odstęp do panelu daje `gap`; bez tego `-8` nachodził na segment. */
+  sectionHeadingLearningMode: {
+    marginBottom: 0,
+  },
   listGroupOuter: {
     borderRadius: StitchRadius.lg,
-    backgroundColor: StitchColors.surfaceContainerHigh,
+    backgroundColor: StitchColors.surfaceContainerLow,
     padding: 1,
-    overflow: 'hidden',
+    overflow: "hidden",
     shadowColor: StitchColors.onSurface,
     shadowOpacity: 0.05,
     shadowRadius: 8,
@@ -634,9 +959,9 @@ const styles = StyleSheet.create({
     gap: 1,
   },
   prefRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: 12,
     paddingVertical: 18,
     paddingHorizontal: 18,
@@ -649,8 +974,8 @@ const styles = StyleSheet.create({
     opacity: 0.45,
   },
   prefRowLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 14,
     flex: 1,
     minWidth: 0,
@@ -659,9 +984,9 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 10,
-    backgroundColor: 'rgba(68, 86, 186, 0.08)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "rgba(68, 86, 186, 0.08)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   prefRowText: {
     flex: 1,
@@ -680,16 +1005,16 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   prefRowRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 6,
-    maxWidth: '42%',
+    maxWidth: "42%",
   },
   prefValue: {
     fontSize: 13,
     fontFamily: StitchFonts.bodySemi,
     color: StitchColors.primary,
-    textAlign: 'right',
+    textAlign: "right",
     flexShrink: 1,
   },
   error: {
@@ -701,8 +1026,8 @@ const styles = StyleSheet.create({
     backgroundColor: StitchColors.primary,
     borderRadius: StitchRadius.xl,
     paddingVertical: 18,
-    alignItems: 'center',
-    width: '100%',
+    alignItems: "center",
+    width: "100%",
     shadowColor: StitchColors.primary,
     shadowOpacity: 0.22,
     shadowRadius: 16,
@@ -723,101 +1048,77 @@ const styles = StyleSheet.create({
   widgetPreviewCanvas: {
     borderRadius: StitchRadius.lg,
     borderWidth: 2,
-    borderColor: 'rgba(175, 179, 179, 0.35)',
+    borderColor: "rgba(175, 179, 179, 0.35)",
     backgroundColor: StitchColors.surfaceContainerLow,
     padding: 28,
-    alignItems: 'center',
+    alignItems: "center",
   },
   widgetPreviewLabel: {
     fontSize: 10,
     fontFamily: StitchFonts.bodySemi,
     color: StitchColors.onSurfaceVariant,
     letterSpacing: 2,
-    textTransform: 'uppercase',
+    textTransform: "uppercase",
     marginBottom: 20,
-  },
-  /**
-   * Jak `WordlyDailyWidget.swift`: marka → duże słowo → mniejsze tłumaczenie (drugi plan).
-   */
-  widgetDevice: {
-    alignSelf: 'center',
-    borderRadius: StitchRadius.xl,
-    padding: 0,
-    justifyContent: 'flex-start',
-    alignItems: 'stretch',
-    overflow: 'hidden',
-    backgroundColor: widgetIosBackground,
-  },
-  /** Jedna warstwa zbliżona do Swift: gradient do tła, bez wyraźnej „wewnętrznej karty”. */
-  widgetDecorLayer: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: StitchRadius.xl,
-    overflow: 'hidden',
-  },
-  widgetDecorBlobTop: {
-    position: 'absolute',
-    top: -20,
-    right: -16,
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: 'rgba(68, 86, 186, 0.10)',
-  },
-  widgetDecorBlobBottom: {
-    position: 'absolute',
-    bottom: -32,
-    left: -24,
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: 'rgba(68, 86, 186, 0.03)',
-  },
-  /** Zgodne z `WordlyWidgetContentPadding.small` (16). */
-  widgetStack: {
-    width: '100%',
-    alignItems: 'flex-start',
-    zIndex: 1,
-    padding: 16,
-  },
-  widgetBrand: {
-    fontSize: 11,
-    lineHeight: 14,
-    color: StitchColors.primary,
-    letterSpacing: 0.35,
-    opacity: 0.9,
-    marginBottom: 8,
-    ...Platform.select({
-      ios: { fontWeight: '600' as const },
-      default: { fontFamily: StitchFonts.bodySemi },
-    }),
-  },
-  widgetWord: {
-    fontSize: 26,
-    lineHeight: 30,
-    color: widgetIosLabel,
-    ...Platform.select({
-      ios: { fontWeight: '700' as const },
-      default: { fontFamily: StitchFonts.headline },
-    }),
-  },
-  widgetTranslation: {
-    marginTop: 12,
-    fontSize: 13,
-    lineHeight: 18,
-    color: widgetIosSecondaryLabel,
-    ...Platform.select({
-      ios: { fontWeight: '400' as const },
-      default: { fontFamily: StitchFonts.body },
-    }),
   },
   widgetNote: {
     paddingHorizontal: 4,
+    gap: 12,
   },
-  widgetNoteText: {
+  widgetRecommendedBanner: {
+    borderRadius: StitchRadius.lg,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    backgroundColor: "rgba(68, 86, 186, 0.09)",
+    borderWidth: 1.5,
+    borderColor: "rgba(68, 86, 186, 0.38)",
+    gap: 10,
+  },
+  widgetRecommendedBadge: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: StitchRadius.full,
+    backgroundColor: "rgba(68, 86, 186, 0.18)",
+  },
+  widgetRecommendedBadgeText: {
+    fontSize: 11,
+    fontFamily: StitchFonts.bodySemi,
+    color: StitchColors.primary,
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+  },
+  widgetNoteLead: {
+    fontSize: 14,
+    fontFamily: StitchFonts.bodySemi,
+    color: StitchColors.onSurface,
+    lineHeight: 21,
+  },
+  widgetInstructionList: {
+    gap: 6,
+    paddingHorizontal: 10,
+  },
+  widgetInstructionRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 6,
+  },
+  widgetInstructionIndex: {
+    minWidth: 14,
+    fontSize: 13,
+    fontFamily: StitchFonts.bodySemi,
+    color: StitchColors.primary,
+    lineHeight: 20,
+    textAlign: "right",
+    paddingTop: 1,
+  },
+  widgetNoteInstructions: {
+    flex: 1,
     fontSize: 13,
     fontFamily: StitchFonts.body,
     color: StitchColors.onSurfaceVariant,
     lineHeight: 20,
+    paddingVertical: 1,
   },
   accountHeading: {
     fontSize: 17,
@@ -830,7 +1131,7 @@ const styles = StyleSheet.create({
     borderRadius: StitchRadius.lg,
     backgroundColor: StitchColors.surfaceContainerLow,
     padding: 4,
-    overflow: 'hidden',
+    overflow: "hidden",
     marginBottom: 8,
   },
   accountRow: {
@@ -839,11 +1140,11 @@ const styles = StyleSheet.create({
     borderRadius: StitchRadius.md,
   },
   accountRowPressed: {
-    backgroundColor: 'rgba(249, 115, 134, 0.12)',
+    backgroundColor: "rgba(249, 115, 134, 0.12)",
   },
   accountRowLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 14,
   },
   accountRowLabel: {
@@ -856,8 +1157,8 @@ const styles = StyleSheet.create({
   },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(15, 20, 25, 0.45)',
-    justifyContent: 'center',
+    backgroundColor: "rgba(15, 20, 25, 0.45)",
+    justifyContent: "center",
     padding: 24,
   },
   modalCard: {
@@ -866,21 +1167,66 @@ const styles = StyleSheet.create({
     padding: 22,
     gap: 18,
     maxWidth: 420,
-    alignSelf: 'center',
-    width: '100%',
+    alignSelf: "center",
+    width: "100%",
+  },
+  modalIntro: {
+    gap: 6,
   },
   modalTitle: {
     fontSize: 18,
     fontFamily: StitchFonts.headline,
     color: StitchColors.onSurface,
   },
-  modalChips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
+  modalLanguageList: {
+    maxHeight: 340,
+    marginHorizontal: -4,
+  },
+  modalLanguageRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: StitchRadius.md,
+    gap: 12,
+    marginBottom: 4,
+  },
+  modalLanguageRowSelected: {
+    backgroundColor: StitchColors.surfaceContainerLow,
+  },
+  modalLanguageRowPressed: {
+    backgroundColor: StitchColors.surfaceContainer,
+  },
+  /** Stała szerokość + brak ściskania w `row` (flaga PNG / badge z kodem). */
+  modalLanguageFlagCell: {
+    width: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  modalLanguageRowText: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  modalLanguageName: {
+    fontSize: 16,
+    fontFamily: StitchFonts.bodySemi,
+    color: StitchColors.onSurface,
+  },
+  modalLanguageCode: {
+    fontSize: 12,
+    fontFamily: StitchFonts.body,
+    color: StitchColors.onSurfaceVariant,
+    letterSpacing: 0.5,
+  },
+  modalLanguageRowTrailing: {
+    width: 28,
+    alignItems: "center",
+    justifyContent: "center",
   },
   modalDone: {
-    alignSelf: 'flex-end',
+    alignSelf: "flex-end",
     paddingVertical: 10,
     paddingHorizontal: 8,
   },
@@ -902,10 +1248,10 @@ const styles = StyleSheet.create({
     fontFamily: StitchFonts.label,
     color: StitchColors.onSurfaceVariant,
     letterSpacing: 1,
-    textTransform: 'uppercase',
+    textTransform: "uppercase",
   },
   devButton: {
-    alignSelf: 'flex-start',
+    alignSelf: "flex-start",
     paddingVertical: 10,
     paddingHorizontal: 14,
     borderRadius: StitchRadius.sm,

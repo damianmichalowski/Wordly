@@ -2,7 +2,6 @@ import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { syncStoredProfileUserIdWithAuth } from '@/src/services/api/profileApi';
 import {
   isAppleSignInAvailable,
   signInWithApple,
@@ -49,7 +48,6 @@ export default function OnboardingScreen() {
   const afterSuccessfulSignIn = useCallback(async () => {
     const onboarded = await isOnboardingComplete();
     if (onboarded) {
-      await syncStoredProfileUserIdWithAuth();
       router.replace('/(tabs)/home');
       return;
     }

@@ -10,7 +10,6 @@ module.exports = defineConfig([
       'node_modules/**',
       'ios/**',
       'android/**',
-      'scripts/vocabulary-seed/**',
       'supabase/**',
     ],
   },

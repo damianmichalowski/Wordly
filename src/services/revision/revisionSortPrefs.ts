@@ -3,16 +3,13 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 const STORAGE_KEY = "wordly.revisionSortPrefs";
 
 export type RevisionTimeOrder = "newest" | "oldest";
-export type RevisionCefrOrder = "none" | "asc" | "desc";
 
 export type RevisionSortPrefs = {
   timeOrder: RevisionTimeOrder;
-  cefrOrder: RevisionCefrOrder;
 };
 
 export const DEFAULT_REVISION_SORT_PREFS: RevisionSortPrefs = {
   timeOrder: "newest",
-  cefrOrder: "none",
 };
 
 export async function loadRevisionSortPrefs(): Promise<RevisionSortPrefs> {
@@ -21,13 +18,11 @@ export async function loadRevisionSortPrefs(): Promise<RevisionSortPrefs> {
     if (!raw) {
       return DEFAULT_REVISION_SORT_PREFS;
     }
-    const parsed = JSON.parse(raw) as Partial<RevisionSortPrefs>;
+    const parsed = JSON.parse(raw) as Partial<RevisionSortPrefs> & {
+      cefrOrder?: unknown;
+    };
     return {
       timeOrder: parsed.timeOrder === "oldest" ? "oldest" : "newest",
-      cefrOrder:
-        parsed.cefrOrder === "asc" || parsed.cefrOrder === "desc"
-          ? parsed.cefrOrder
-          : "none",
     };
   } catch {
     return DEFAULT_REVISION_SORT_PREFS;

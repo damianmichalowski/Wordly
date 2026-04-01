@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import Animated, { FadeIn, FadeInDown, ZoomIn } from "react-native-reanimated";
+import Animated, { FadeInDown, ZoomIn } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -10,7 +10,6 @@ import {
   primarySolidPressStyle,
   surfacePressStyle,
 } from "@/src/components/ui/interaction";
-import { SessionRewardPlaceholder } from "@/src/features/revision/components/SessionRewardPlaceholder";
 import { formatSessionDurationMs } from "@/src/features/revision/revisionSessionUi";
 import type { RevisionSessionCompletionStats } from "@/src/types/revisionSession";
 import {
@@ -51,26 +50,24 @@ export function RevisionSessionCompleteScreen({
         },
       ]}
     >
-      <Animated.View entering={ZoomIn.duration(400)} style={styles.iconWrap}>
-        <Ionicons
-          name="checkmark-circle"
-          size={56}
-          color={StitchColors.secondary}
-        />
-      </Animated.View>
+      <View style={styles.centeredContent}>
+        <Animated.View entering={ZoomIn.duration(400)} style={styles.iconWrap}>
+          <Ionicons
+            name="checkmark-circle"
+            size={56}
+            color={StitchColors.secondary}
+          />
+        </Animated.View>
 
-      <Animated.View entering={FadeInDown.duration(380).delay(60)}>
-        <Text style={styles.title}>Nice work</Text>
-        <Text style={styles.subtitle}>
-          You reviewed {sessionStats.cardsReviewed}{" "}
-          {sessionStats.cardsReviewed === 1 ? "word" : "words"}
-        </Text>
-        <Text style={styles.meta}>Session time: {durationLabel}</Text>
-      </Animated.View>
-
-      <Animated.View entering={FadeIn.duration(400).delay(120)} style={styles.rewardSlot}>
-        <SessionRewardPlaceholder />
-      </Animated.View>
+        <Animated.View entering={FadeInDown.duration(380).delay(60)}>
+          <Text style={styles.title}>Nice work</Text>
+          <Text style={styles.subtitle}>
+            You reviewed {sessionStats.cardsReviewed}{" "}
+            {sessionStats.cardsReviewed === 1 ? "word" : "words"}
+          </Text>
+          <Text style={styles.meta}>Session time: {durationLabel}</Text>
+        </Animated.View>
+      </View>
 
       <View style={styles.actions}>
         <Pressable
@@ -108,7 +105,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     backgroundColor: StitchColors.surface,
     alignItems: "stretch",
+  },
+  /** Ikona + teksty wyśrodkowane w pionie w wolnej przestrzeni nad przyciskami. */
+  centeredContent: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    width: "100%",
     gap: 20,
+    minHeight: 0,
   },
   iconWrap: {
     alignSelf: "center",
@@ -136,17 +141,12 @@ const styles = StyleSheet.create({
     textAlign: "center",
     opacity: 0.9,
   },
-  rewardSlot: {
-    width: "100%",
-    flexGrow: 1,
-    justifyContent: "flex-start",
-    paddingTop: 8,
-  },
   actions: {
     gap: 12,
     width: "100%",
     maxWidth: 400,
     alignSelf: "center",
+    flexShrink: 0,
   },
   primaryBtn: {
     borderRadius: StitchRadius.lg,

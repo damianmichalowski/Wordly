@@ -59,7 +59,6 @@ Primary testing target is **physical iPhone**. See **[`docs/IOS_DEVICE.md`](./do
 | [`docs/PHASE_8_NATIVE_WIDGETS.md`](./docs/PHASE_8_NATIVE_WIDGETS.md) | **Native widgets** — dev builds, iOS/Android, data bridge |
 | [`docs/PREBUILD_APPLE_TARGETS.md`](./docs/PREBUILD_APPLE_TARGETS.md) | **Prebuild + widget** — `removeFromProject` / `--clean`, `APPLE_TEAM_ID` |
 | [`docs/IOS_DEVICE.md`](./docs/IOS_DEVICE.md) | **iPhone real device** — prebuild, signing, Metro |
-| [`docs/VOCABULARY_DATA.md`](./docs/VOCABULARY_DATA.md) | **Skąd brać słowa** — CEFR, Oxford, licencje, import do Supabase |
 
 ## Phases completed in code
 

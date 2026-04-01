@@ -1,13 +1,14 @@
-import { Alert } from 'react-native';
+import { Alert } from 'react-native'
 
-import type { OnboardingDraft } from '@/src/features/onboarding/OnboardingProvider';
-import { deriveDisplayLevel } from '@/src/domain/userProfile/levelMapping';
-import { upsertProfileToSupabase } from '@/src/services/api/profileApi';
-import { getAuthenticatedUserId } from '@/src/services/auth/ensureSession';
-import { setOnboardingComplete } from '@/src/services/storage/onboardingStorage';
-import { saveUserProfile } from '@/src/services/storage/profileStorage';
-import { syncWidgetSnapshotFromApp } from '@/src/services/widgets/syncWidgetSnapshot';
-import type { UserProfile } from '@/src/types/profile';
+import type { OnboardingDraft } from '@/src/features/onboarding/OnboardingProvider'
+import { emitProfileSettingsSaved } from '@/src/events/profileSettingsEvents'
+import {
+  invalidateTodayDailyWord,
+  upsertUserProfileSettings,
+} from '@/src/features/profile/services/profile.service'
+import { getAuthenticatedUserId } from '@/src/services/auth/ensureSession'
+import { setOnboardingComplete } from '@/src/services/storage/onboardingStorage'
+import { syncWidgetSnapshotFromApp } from '@/src/services/widgets/syncWidgetSnapshot'
 
 export async function completeOnboardingFromDraft(
   draft: OnboardingDraft,
@@ -22,23 +23,34 @@ export async function completeOnboardingFromDraft(
     return { ok: false };
   }
 
-  const displayLevel = deriveDisplayLevel(draft.currentLevel, draft.displayLevelPolicy);
-  const now = new Date().toISOString();
-  const profile: UserProfile = {
-    userId: uid,
-    languagePair: {
-      sourceLanguage: draft.sourceLanguage,
-      targetLanguage: draft.targetLanguage,
-    },
-    currentLevel: draft.currentLevel,
-    displayLevel,
-    displayLevelPolicy: draft.displayLevelPolicy,
-    createdAt: now,
-    updatedAt: now,
-  };
+  if (!draft.nativeLanguageId || !draft.learningLanguageId) {
+    Alert.alert('Missing data', 'Please select both languages.')
+    return { ok: false }
+  }
+  if (draft.nativeLanguageId === draft.learningLanguageId) {
+    Alert.alert('Invalid selection', 'Native and learning language must be different.')
+    return { ok: false }
+  }
+  if (draft.learningModeType === 'difficulty' && !draft.learningLevel) {
+    Alert.alert('Missing data', 'Please select your difficulty level.')
+    return { ok: false }
+  }
+  if (draft.learningModeType === 'category' && !draft.selectedCategoryId) {
+    Alert.alert('Missing data', 'Please select a category.')
+    return { ok: false }
+  }
 
-  await saveUserProfile(profile);
-  await upsertProfileToSupabase(profile);
+  await upsertUserProfileSettings({
+    p_native_language_id: draft.nativeLanguageId,
+    p_learning_language_id: draft.learningLanguageId,
+    p_learning_mode_type: draft.learningModeType,
+    p_learning_level:
+      draft.learningModeType === 'difficulty' ? draft.learningLevel ?? undefined : undefined,
+    p_selected_category_id:
+      draft.learningModeType === 'category' ? draft.selectedCategoryId ?? undefined : undefined,
+  })
+  await invalidateTodayDailyWord()
+  emitProfileSettingsSaved()
   await setOnboardingComplete();
   markOnboardingComplete();
   await syncWidgetSnapshotFromApp();

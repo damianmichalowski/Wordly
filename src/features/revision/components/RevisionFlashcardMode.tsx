@@ -1,13 +1,19 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
-  ScrollView,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Animated, {
+  SlideInLeft,
+  SlideInRight,
+  SlideOutLeft,
+  SlideOutRight,
+} from "react-native-reanimated";
 
 import {
   ANDROID_RIPPLE_ICON_ROUND,
@@ -16,50 +22,47 @@ import {
   ANDROID_RIPPLE_SURFACE,
   HIT_SLOP_COMFORT,
   HIT_SLOP_MINI,
-  linkPressStyle,
   primarySolidPressStyle,
   roundIconPressStyle,
   surfacePressStyle,
 } from "@/src/components/ui/interaction";
-import { FormattedTranslationGlosses } from "@/src/components/vocabulary/FormattedTranslationGlosses";
-import { homeWordCardStyles } from "@/src/features/dailyWord/homeWordCardStyles";
+import { homeWordCardStyles } from "@/src/features/daily-word/styles/homeWordCardStyles";
+import {
+  getRevisionExampleLines,
+  getRevisionTranslationLines,
+} from "@/src/features/revision/revisionFlashcardBackContent";
 import {
   canPronounce,
   speakWord,
 } from "@/src/services/audio/pronunciationService";
 import { fetchExternalUsageExamples } from "@/src/services/examples/externalUsageExamples";
-import { sentenceExampleHomeStyles } from "@/src/theme/sentenceExampleStyles";
 import { StitchColors } from "@/src/theme/wordlyStitchTheme";
 import type { VocabularyWord } from "@/src/types/words";
 import { LogTag, logger } from "@/src/utils/logger";
 
-import { revisionScreenStyles as styles } from "../revisionScreenStyles";
+import { revisionScreenStyles } from "../revisionScreenStyles";
+import { RevisionFlipCard } from "./RevisionFlipCard";
 
 type RevisionFlashcardModeProps = {
   flashDeck: VocabularyWord[];
   index: number;
   activeCard: VocabularyWord | null;
   isFlipped: boolean;
-  exitFlashcards: () => void;
+  /** Wyjście z fiszek bez zapisu sesji (biblioteka: wróć do listy; Hub: anuluj sesję). */
+  onAbortSession: () => void;
   flip: () => void;
   next: () => void;
   previous: () => void;
-  /** Krótka etykieta trybu zamiast ogólnego „Powtórka”. */
   sessionLabel?: string;
-  /**
-   * When set, the last card “Koniec” calls this instead of {@link exitFlashcards}
-   * (e.g. hub revision session completion screen).
-   */
   onLastCardContinue?: () => void;
 };
 
-/** `isFlipped` w stanie = tłumaczenie jest odsłonięte (reveal), bez „obracania” fiszki. */
 export function RevisionFlashcardMode({
   flashDeck,
   index,
   activeCard,
   isFlipped,
-  exitFlashcards,
+  onAbortSession,
   flip,
   next,
   previous,
@@ -67,17 +70,54 @@ export function RevisionFlashcardMode({
   onLastCardContinue,
 }: RevisionFlashcardModeProps) {
   const insets = useSafeAreaInsets();
+  const { height: windowH } = useWindowDimensions();
   const [onlineExamples, setOnlineExamples] = useState<
     { source: string }[] | null
   >(null);
   const [loadingOnlineExamples, setLoadingOnlineExamples] = useState(false);
+
+  const flipHeight = useMemo(() => {
+    const h = Math.round(
+      Math.min(Math.max(windowH * 0.54, 300), 460),
+    );
+    return h;
+  }, [windowH]);
+
+  /** Kierunek animacji talii przy zmianie indeksu (Dalej / Wstecz). */
+  const [deckDirection, setDeckDirection] = useState<"next" | "prev">("next");
+
+  const goNextCard = useCallback(() => {
+    setDeckDirection("next");
+    next();
+  }, [next]);
+
+  const goPreviousCard = useCallback(() => {
+    setDeckDirection("prev");
+    previous();
+  }, [previous]);
+
+  /** Szybsze przejście, mniejszy „bounce” (wyższy damping / stiffness, karta nie wychodzi poza ekran). */
+  const deckEntering = useMemo(
+    () =>
+      deckDirection === "next"
+        ? SlideInRight.springify().damping(32).stiffness(520).mass(0.85)
+        : SlideInLeft.springify().damping(32).stiffness(520).mass(0.85),
+    [deckDirection],
+  );
+
+  const deckExiting = useMemo(
+    () =>
+      deckDirection === "next"
+        ? SlideOutLeft.springify().damping(34).stiffness(560).mass(0.82)
+        : SlideOutRight.springify().damping(34).stiffness(560).mass(0.82),
+    [deckDirection],
+  );
 
   useEffect(() => {
     setOnlineExamples(null);
     setLoadingOnlineExamples(false);
   }, [activeCard?.id]);
 
-  /** Jak na Home: przykłady z sieci (EN), gdy brak exampleSource w bazie. */
   useEffect(() => {
     if (!activeCard) {
       return;
@@ -115,24 +155,38 @@ export function RevisionFlashcardMode({
     };
   }, [activeCard]);
 
+  const revisionTranslationLines = useMemo(() => {
+    if (!activeCard) {
+      return [] as string[];
+    }
+    return getRevisionTranslationLines(activeCard);
+  }, [activeCard]);
+
+  const revisionExampleLines = useMemo(() => {
+    if (!activeCard) {
+      return [] as string[];
+    }
+    return getRevisionExampleLines(activeCard, onlineExamples);
+  }, [activeCard, onlineExamples]);
+
   if (!activeCard || flashDeck.length === 0) {
     return (
       <View
         style={[
-          styles.centered,
+          revisionScreenStyles.centered,
           { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 },
         ]}
       >
-        <Text style={styles.title}>Brak słów</Text>
+        <Text style={revisionScreenStyles.title}>Brak słów</Text>
         <Pressable
           android_ripple={ANDROID_RIPPLE_PRIMARY}
           style={({ pressed }) => [
-            styles.primaryButton,
+            revisionScreenStyles.primaryButton,
             primarySolidPressStyle(pressed, false),
           ]}
-          onPress={exitFlashcards}
+          onPress={onAbortSession}
         >
-          <Text style={styles.primaryButtonText}>Wróć</Text>
+          <Text style={revisionScreenStyles.primaryButtonText}>Wróć</Text>
         </Pressable>
       </View>
     );
@@ -143,36 +197,266 @@ export function RevisionFlashcardMode({
   const progressRatio = total > 0 ? current / total : 0;
   const isLastCard = current === total;
   const isFirstCard = index === 0;
-  const translationRevealed = isFlipped;
   const ipa = activeCard.pronunciationText?.trim();
 
+  const audioToolbar = (
+    <View style={homeWordCardStyles.focalTopRow}>
+      <View style={revisionScreenStyles.revisionFlipToolbarTitle}>
+        <View style={homeWordCardStyles.levelPill}>
+          <Text style={homeWordCardStyles.levelPillText}>
+            {activeCard.cefrLevel}
+          </Text>
+        </View>
+      </View>
+      <View style={homeWordCardStyles.topRowActions}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Odsłuchaj wymowę"
+          android_ripple={ANDROID_RIPPLE_ICON_ROUND}
+          hitSlop={HIT_SLOP_MINI}
+          style={({ pressed }) => [
+            homeWordCardStyles.roundIconButton,
+            !canPronounce(activeCard) && homeWordCardStyles.buttonDisabled,
+            roundIconPressStyle(pressed, !canPronounce(activeCard)),
+          ]}
+          onPress={() => speakWord(activeCard)}
+          disabled={!canPronounce(activeCard)}
+        >
+          <Ionicons
+            name="volume-medium"
+            size={22}
+            color={StitchColors.onSurface}
+          />
+        </Pressable>
+      </View>
+    </View>
+  );
+
+  const frontFace = (
+    <View style={revisionScreenStyles.revisionFlipFaceRoot}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Odwróć fiszkę"
+        onPress={flip}
+        style={({ pressed }) => [
+          homeWordCardStyles.focalShell,
+          revisionScreenStyles.revisionFlipShell,
+          surfacePressStyle(pressed, false),
+        ]}
+      >
+        <View
+          style={[
+            homeWordCardStyles.focalInner,
+            revisionScreenStyles.revisionWordCardInner,
+            revisionScreenStyles.revisionFlashcardFocalCompact,
+            revisionScreenStyles.revisionFlipFaceColumn,
+          ]}
+        >
+          {audioToolbar}
+          <View style={revisionScreenStyles.revisionFlipTapFrontInner}>
+            <View
+              style={[
+                homeWordCardStyles.wordTranslationBlock,
+                revisionScreenStyles.revisionFlipFrontWordNudge,
+              ]}
+            >
+              <Text style={homeWordCardStyles.heroWord}>
+                {activeCard.sourceText}
+              </Text>
+              {ipa ? (
+                <Text style={homeWordCardStyles.ipa} numberOfLines={2}>
+                  /{ipa}/
+                </Text>
+              ) : null}
+            </View>
+          </View>
+        </View>
+      </Pressable>
+    </View>
+  );
+
+  const backFace = (
+    <View style={revisionScreenStyles.revisionFlipFaceRoot}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Odwróć fiszkę"
+        onPress={flip}
+        style={({ pressed }) => [
+          homeWordCardStyles.focalShell,
+          revisionScreenStyles.revisionFlipShell,
+          surfacePressStyle(pressed, false),
+        ]}
+      >
+        <View
+          style={[
+            homeWordCardStyles.focalInner,
+            revisionScreenStyles.revisionWordCardInner,
+            revisionScreenStyles.revisionFlashcardFocalCompact,
+            revisionScreenStyles.revisionFlipFaceColumn,
+          ]}
+        >
+          <View style={revisionScreenStyles.revisionFlipBackContentWrap}>
+            <View style={revisionScreenStyles.revisionFlashcardBackRoot}>
+                {revisionTranslationLines.length > 0 ? (
+                  <View style={revisionScreenStyles.revisionFlashcardBackTranslationHero}>
+                    <View
+                      style={revisionScreenStyles.revisionFlashcardTranslationHeroRow}
+                    >
+                      {revisionTranslationLines.map((line, i) => {
+                        const several = revisionTranslationLines.length > 1;
+                        const isLast =
+                          i === revisionTranslationLines.length - 1;
+                        const withComma = several && !isLast;
+                        const display = withComma ? `${line},` : line;
+                        return (
+                          <Text
+                            key={`tr-${i}`}
+                            style={
+                              revisionScreenStyles.revisionFlashcardTranslationHeroText
+                            }
+                            numberOfLines={5}
+                            accessibilityLabel={display}
+                          >
+                            {display}
+                          </Text>
+                        );
+                      })}
+                    </View>
+                  </View>
+                ) : null}
+
+                {revisionExampleLines.length > 0 ? (
+                  <View style={revisionScreenStyles.revisionFlashcardBackSection}>
+                    <Text style={revisionScreenStyles.revisionFlashcardExamplesHeading}>
+                      Przykłady
+                    </Text>
+                    <View style={revisionScreenStyles.revisionFlashcardExampleStack}>
+                      {revisionExampleLines.map((line, i) => (
+                        <View
+                          key={`ex-${i}`}
+                          style={revisionScreenStyles.revisionFlashcardExampleLine}
+                        >
+                          <View
+                            style={revisionScreenStyles.revisionFlashcardExampleLineBar}
+                          />
+                          <Text style={revisionScreenStyles.revisionFlashcardExampleText}>
+                            {line}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                ) : activeCard.sourceLanguageCode !== "en" ? (
+                  <View style={revisionScreenStyles.revisionFlashcardBackSection}>
+                    <Text style={revisionScreenStyles.revisionFlashcardExamplesHeading}>
+                      Przykłady
+                    </Text>
+                    <View style={revisionScreenStyles.revisionFlashcardExampleLine}>
+                      <View
+                        style={revisionScreenStyles.revisionFlashcardExampleLineBar}
+                      />
+                      <Text
+                        style={[
+                          revisionScreenStyles.revisionFlashcardMutedHint,
+                          revisionScreenStyles.revisionFlashcardMutedHintInSection,
+                        ]}
+                      >
+                        Krótkie przykłady z sieci są dostępne tylko dla słów z
+                        języka angielskiego.
+                      </Text>
+                    </View>
+                  </View>
+                ) : loadingOnlineExamples || onlineExamples === null ? (
+                  <View style={revisionScreenStyles.revisionFlashcardBackSection}>
+                    <Text style={revisionScreenStyles.revisionFlashcardExamplesHeading}>
+                      Przykłady
+                    </Text>
+                    <View style={revisionScreenStyles.revisionFlashcardLoadingRow}>
+                      <ActivityIndicator
+                        size="small"
+                        color={StitchColors.primary}
+                      />
+                      <Text style={revisionScreenStyles.revisionFlashcardMutedHint}>
+                        Szukam przykładów…
+                      </Text>
+                    </View>
+                  </View>
+                ) : (
+                  <View style={revisionScreenStyles.revisionFlashcardBackSection}>
+                    <Text style={revisionScreenStyles.revisionFlashcardExamplesHeading}>
+                      Przykłady
+                    </Text>
+                    <View style={revisionScreenStyles.revisionFlashcardExampleLine}>
+                      <View
+                        style={revisionScreenStyles.revisionFlashcardExampleLineBar}
+                      />
+                      <Text
+                        style={[
+                          revisionScreenStyles.revisionFlashcardMutedHint,
+                          revisionScreenStyles.revisionFlashcardMutedHintInSection,
+                        ]}
+                      >
+                        Brak krótkich przykładów dla tego słowa.
+                      </Text>
+                    </View>
+                  </View>
+                )}
+              </View>
+          </View>
+        </View>
+      </Pressable>
+    </View>
+  );
+
   return (
-    <View style={styles.revisionFlashcardScreen}>
+    <View style={revisionScreenStyles.revisionFlashcardScreen}>
       <View
         style={[
-          styles.revisionFlashHeaderInset,
+          revisionScreenStyles.revisionFlashHeaderInset,
           { paddingTop: insets.top + 10 },
         ]}
       >
-        <View style={styles.flashSessionHeader}>
-          <View style={styles.flashSessionHeadingBlock}>
-            <Text style={styles.flashSessionLabel}>
+        <View style={revisionScreenStyles.flashSessionHeaderStack}>
+          <View style={revisionScreenStyles.flashSessionHeaderLine}>
+            <Text
+              style={[
+                revisionScreenStyles.flashSessionLabel,
+                revisionScreenStyles.flashSessionLabelFlexible,
+              ]}
+              numberOfLines={2}
+              ellipsizeMode="tail"
+            >
               {sessionLabel ?? "Powtórka"}
             </Text>
-            <View style={styles.flashSessionTitleRow}>
-              <View style={styles.flashSessionTitleWithCount}>
-                <Text style={styles.flashSessionTitle}>Postęp</Text>
-                <Text>
-                  <Text style={styles.flashSessionCountCurrent}>{current}</Text>
-                  <Text style={styles.flashSessionCountRest}> z {total}</Text>
-                </Text>
-              </View>
+            <Pressable
+              android_ripple={ANDROID_RIPPLE_MUTED}
+              style={({ pressed }) => [
+                revisionScreenStyles.flashAbortPressable,
+                surfacePressStyle(pressed, false),
+              ]}
+              onPress={onAbortSession}
+              hitSlop={HIT_SLOP_COMFORT}
+              accessibilityRole="button"
+              accessibilityLabel="Anuluj sesję bez zapisywania powtórki"
+            >
+              <Text style={revisionScreenStyles.flashAbortText}>Anuluj sesję</Text>
+            </Pressable>
+          </View>
+          <View style={revisionScreenStyles.flashSessionHeaderLine}>
+            <Text style={revisionScreenStyles.flashSessionTitle}>Postęp</Text>
+            <View style={revisionScreenStyles.flashSessionCountWrap}>
+              <Text>
+                <Text style={revisionScreenStyles.flashSessionCountCurrent}>{current}</Text>
+                <Text style={revisionScreenStyles.flashSessionCountRest}> z {total}</Text>
+              </Text>
             </View>
           </View>
-          <View style={styles.progressTrack}>
+        </View>
+        <View style={revisionScreenStyles.flashSessionHeader}>
+          <View style={revisionScreenStyles.progressTrack}>
             <View
               style={[
-                styles.progressFill,
+                revisionScreenStyles.progressFill,
                 { width: `${progressRatio * 100}%` },
               ]}
             />
@@ -180,190 +464,38 @@ export function RevisionFlashcardMode({
         </View>
       </View>
 
-      <View style={styles.flashCardOuter}>
-        <ScrollView
-          style={styles.revisionRevealScroll}
-          contentContainerStyle={styles.revisionRevealScrollContent}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          bounces
+      <View style={revisionScreenStyles.flashCardOuter}>
+        <Animated.View
+          key={activeCard.id}
+          entering={deckEntering}
+          exiting={deckExiting}
+          style={revisionScreenStyles.revisionDeckCardWrap}
         >
-          <View style={homeWordCardStyles.focalShell}>
-            <View
-              style={[
-                homeWordCardStyles.focalInner,
-                styles.revisionWordCardInner,
-              ]}
-            >
-              <View style={homeWordCardStyles.focalTopRow}>
-                <View style={homeWordCardStyles.levelPill}>
-                  <Text style={homeWordCardStyles.levelPillText}>
-                    {activeCard.cefrLevel}
-                  </Text>
-                </View>
-                <View style={homeWordCardStyles.topRowActions}>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="Odsłuchaj wymowę"
-                    android_ripple={ANDROID_RIPPLE_ICON_ROUND}
-                    hitSlop={HIT_SLOP_MINI}
-                    style={({ pressed }) => [
-                      homeWordCardStyles.roundIconButton,
-                      !canPronounce(activeCard) &&
-                        homeWordCardStyles.buttonDisabled,
-                      roundIconPressStyle(pressed, !canPronounce(activeCard)),
-                    ]}
-                    onPress={() => speakWord(activeCard)}
-                    disabled={!canPronounce(activeCard)}
-                  >
-                    <Ionicons
-                      name="volume-medium"
-                      size={22}
-                      color={StitchColors.onSurface}
-                    />
-                  </Pressable>
-                </View>
-              </View>
-
-              <View style={homeWordCardStyles.wordTranslationBlock}>
-                <Text style={homeWordCardStyles.heroWord}>
-                  {activeCard.sourceText}
-                </Text>
-
-                {ipa ? (
-                  <Text style={homeWordCardStyles.ipa} numberOfLines={2}>
-                    /{ipa}/
-                  </Text>
-                ) : null}
-
-                {!translationRevealed ? (
-                  <Pressable
-                    android_ripple={ANDROID_RIPPLE_PRIMARY}
-                    style={({ pressed }) => [
-                      styles.revealTranslationPrimary,
-                      primarySolidPressStyle(pressed, false),
-                    ]}
-                    onPress={flip}
-                    hitSlop={HIT_SLOP_COMFORT}
-                    accessibilityRole="button"
-                    accessibilityLabel="Pokaż tłumaczenie"
-                  >
-                    <Ionicons
-                      name="eye-outline"
-                      size={22}
-                      color={StitchColors.onPrimary}
-                    />
-                    <Text style={styles.revealTranslationPrimaryText}>
-                      Pokaż tłumaczenie
-                    </Text>
-                  </Pressable>
-                ) : (
-                  <>
-                    <View style={homeWordCardStyles.translationBlock}>
-                      <FormattedTranslationGlosses
-                        word={activeCard}
-                        style={homeWordCardStyles.translation}
-                        separatorStyle={homeWordCardStyles.translationSeparator}
-                      />
-                    </View>
-
-                    <View style={sentenceExampleHomeStyles.sectionBlock}>
-                      <Text style={sentenceExampleHomeStyles.sectionTitle}>
-                        Przykłady użycia
-                      </Text>
-                      {activeCard.exampleSource?.trim() ? (
-                        <View style={sentenceExampleHomeStyles.exampleLine}>
-                          <Text style={sentenceExampleHomeStyles.exampleSource}>
-                            {activeCard.exampleSource}
-                          </Text>
-                        </View>
-                      ) : activeCard.sourceLanguageCode !== "en" ? (
-                        <Text style={sentenceExampleHomeStyles.mutedHint}>
-                          Krótkie przykłady z sieci są dostępne tylko dla słów z
-                          języka angielskiego.
-                        </Text>
-                      ) : loadingOnlineExamples || onlineExamples === null ? (
-                        <View style={sentenceExampleHomeStyles.loadingRow}>
-                          <ActivityIndicator
-                            size="small"
-                            color={StitchColors.primary}
-                          />
-                          <Text style={sentenceExampleHomeStyles.mutedHint}>
-                            Szukam przykładów…
-                          </Text>
-                        </View>
-                      ) : onlineExamples.length > 0 ? (
-                        onlineExamples.map((ex, i) => (
-                          <View
-                            key={`ex-${i}`}
-                            style={sentenceExampleHomeStyles.exampleLine}
-                          >
-                            <Text
-                              style={sentenceExampleHomeStyles.exampleSource}
-                            >
-                              {ex.source}
-                            </Text>
-                          </View>
-                        ))
-                      ) : (
-                        <Text style={sentenceExampleHomeStyles.onlineEmpty}>
-                          Nie udało się znaleźć krótkich przykładów dla tego
-                          słowa.
-                        </Text>
-                      )}
-                    </View>
-
-                    <Pressable
-                      android_ripple={ANDROID_RIPPLE_SURFACE}
-                      style={({ pressed }) => [
-                        styles.revealHideLink,
-                        linkPressStyle(pressed, false),
-                      ]}
-                      onPress={flip}
-                      hitSlop={HIT_SLOP_COMFORT}
-                      accessibilityRole="button"
-                      accessibilityLabel="Ukryj tłumaczenie"
-                    >
-                      <Text style={styles.revealHideLinkText}>
-                        Ukryj tłumaczenie
-                      </Text>
-                    </Pressable>
-                  </>
-                )}
-              </View>
-            </View>
-          </View>
-        </ScrollView>
+          <RevisionFlipCard
+            cardKey={activeCard.id}
+            isFlipped={isFlipped}
+            height={flipHeight}
+            front={frontFace}
+            back={backFace}
+          />
+        </Animated.View>
       </View>
 
       <View
         style={[
-          styles.flashNavRow,
+          revisionScreenStyles.flashNavRow,
           { paddingBottom: Math.max(insets.bottom, 12) },
         ]}
       >
         <Pressable
-          android_ripple={ANDROID_RIPPLE_MUTED}
-          style={({ pressed }) => [
-            styles.flashNavClose,
-            surfacePressStyle(pressed, false),
-          ]}
-          onPress={exitFlashcards}
-          hitSlop={HIT_SLOP_COMFORT}
-          accessibilityRole="button"
-          accessibilityLabel="Zamknij powtórkę"
-        >
-          <Ionicons name="close" size={24} color={StitchColors.error} />
-        </Pressable>
-        <Pressable
           android_ripple={ANDROID_RIPPLE_SURFACE}
           style={({ pressed }) => [
-            styles.flashNavButton,
-            styles.flashNavPrev,
-            isFirstCard && styles.flashNavPrevDisabled,
+            revisionScreenStyles.flashNavButton,
+            revisionScreenStyles.flashNavPrev,
+            isFirstCard && revisionScreenStyles.flashNavPrevDisabled,
             surfacePressStyle(pressed, isFirstCard),
           ]}
-          onPress={previous}
+          onPress={goPreviousCard}
           disabled={isFirstCard}
           accessibilityRole="button"
           accessibilityState={{ disabled: isFirstCard }}
@@ -374,26 +506,26 @@ export function RevisionFlashcardMode({
             size={22}
             color={StitchColors.onSurfaceVariant}
           />
-          <Text style={styles.flashNavPrevText}>Wstecz</Text>
+          <Text style={revisionScreenStyles.flashNavPrevText}>Wstecz</Text>
         </Pressable>
         <Pressable
           android_ripple={ANDROID_RIPPLE_PRIMARY}
           style={({ pressed }) => [
-            styles.flashNavButton,
-            styles.flashNavNext,
+            revisionScreenStyles.flashNavButton,
+            revisionScreenStyles.flashNavNext,
             primarySolidPressStyle(pressed, false),
           ]}
           onPress={
             isLastCard
-              ? onLastCardContinue ?? exitFlashcards
-              : next
+              ? onLastCardContinue ?? onAbortSession
+              : goNextCard
           }
           accessibilityLabel={
             isLastCard ? "Zakończ sesję powtórki" : "Następne słowo"
           }
         >
-          <Text style={styles.flashNavNextText}>
-            {isLastCard ? "Koniec" : "Dalej"}
+          <Text style={revisionScreenStyles.flashNavNextText}>
+            {isLastCard ? "Zakończ" : "Dalej"}
           </Text>
           <Ionicons
             name={isLastCard ? "checkmark-circle" : "chevron-forward"}

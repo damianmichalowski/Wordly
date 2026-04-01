@@ -1,9 +1,9 @@
 import { Platform, StyleSheet } from "react-native";
 
 import {
-  StitchColors,
-  StitchFonts,
-  StitchRadius,
+    StitchColors,
+    StitchFonts,
+    StitchRadius,
 } from "@/src/theme/wordlyStitchTheme";
 
 export const revisionScreenStyles = StyleSheet.create({
@@ -226,19 +226,6 @@ export const revisionScreenStyles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 1,
   },
-  rowLevelCol: {
-    width: 44,
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-  },
-  rowCefrPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: StitchRadius.full,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   rowMain: {
     flex: 1,
     minWidth: 0,
@@ -248,12 +235,6 @@ export const revisionScreenStyles = StyleSheet.create({
     fontSize: 17,
     fontFamily: StitchFonts.headline,
     color: StitchColors.onSurface,
-  },
-  rowCefrPillText: {
-    fontSize: 10,
-    fontFamily: StitchFonts.bodySemi,
-    letterSpacing: 0.3,
-    textTransform: "uppercase",
   },
   rowChevron: {
     marginLeft: 8,
@@ -330,8 +311,8 @@ export const revisionScreenStyles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 0,
     paddingTop: 0,
-    paddingBottom: 10,
-    gap: 14,
+    paddingBottom: 4,
+    gap: 18,
     backgroundColor: StitchColors.surface,
   },
   /**
@@ -340,39 +321,127 @@ export const revisionScreenStyles = StyleSheet.create({
    */
   revisionFlashHeaderInset: {
     width: "100%",
-    paddingHorizontal: 20,
     maxWidth: 640,
     alignSelf: "center",
+    paddingHorizontal: 24,
+    overflow: "hidden",
     zIndex: 10,
     ...(Platform.OS === "android" ? { elevation: 12 } : {}),
   },
-  /** Ciaśniejszy padding wewnątrz karty słowa w powtórce (nadpisuje homeWordCardStyles.focalInner). */
+  /** Wewnątrz karty w powtórce, oddech od krawędzi fiszki. */
   revisionWordCardInner: {
-    paddingHorizontal: 16,
-    paddingVertical: 26,
+    paddingHorizontal: 22,
+    paddingVertical: 28,
+  },
+  /** Nieco ciaśniej niż Daily, więcej miejsca na tył fiszki przy tej samej wysokości sceny. */
+  revisionFlashcardFocalCompact: {
+    paddingHorizontal: 18,
+    paddingVertical: 20,
+  },
+  /** Tył: tłumaczenie + przykłady (bez scrolla, mieści się w scenie fiszki). */
+  revisionFlashcardBackRoot: {
+    width: "100%",
+    gap: 22,
+  },
+  /** Blok tłumaczenia (duży tekst). */
+  revisionFlashcardBackTranslationHero: {
+    width: "100%",
+    alignItems: "center",
+    paddingTop: 4,
+    paddingBottom: 2,
+  },
+  revisionFlashcardTranslationHeroRow: {
+    width: "100%",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 4,
+  },
+  revisionFlashcardTranslationHeroText: {
+    fontSize: 34,
+    lineHeight: 40,
+    fontFamily: StitchFonts.display,
+    color: StitchColors.onSurface,
+    textAlign: "center",
+  },
+  revisionFlashcardBackSection: {
+    width: "100%",
+    gap: 8,
+  },
+  /** Nagłówek sekcji przykładów, cicho, bez kolorowego paska. */
+  revisionFlashcardExamplesHeading: {
+    fontSize: 10,
+    fontFamily: StitchFonts.bodySemi,
+    color: StitchColors.onSurfaceVariant,
+    letterSpacing: 1.1,
+    textTransform: "uppercase",
+    marginBottom: 2,
+  },
+  revisionFlashcardExampleStack: {
+    gap: 10,
+    width: "100%",
+  },
+  revisionFlashcardExampleLine: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    gap: 10,
+  },
+  revisionFlashcardExampleLineBar: {
+    width: 2,
+    borderRadius: 1,
+    backgroundColor: StitchColors.primary,
+    opacity: 0.35,
+    alignSelf: "stretch",
+  },
+  /** Przykłady: drugorzędny kontekst, cieńszy tekst niż tłumaczenie. */
+  revisionFlashcardExampleText: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 13,
+    fontFamily: StitchFonts.body,
+    color: StitchColors.onSurfaceVariant,
+    lineHeight: 20,
+  },
+  revisionFlashcardMutedHint: {
+    fontSize: 12,
+    fontFamily: StitchFonts.body,
+    color: StitchColors.onSurfaceVariant,
+    lineHeight: 17,
+  },
+  revisionFlashcardLoadingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 4,
+    paddingLeft: 12,
+  },
+  revisionFlashcardMutedHintInSection: {
+    flex: 1,
   },
   flashSessionHeader: {
     width: "100%",
     maxWidth: 640,
     alignSelf: "center",
-    marginBottom: 12,
+    marginTop: 10,
+    marginBottom: 6,
     gap: 14,
   },
-  /** Etykieta „Powtórka” lekko nad wierszem Postęp + licznik (subheader). */
-  flashSessionHeadingBlock: {
-    width: "100%",
-    gap: 6,
-  },
-  /** Wiersz: Postęp po lewej, „1 z N” po prawej (space-between). */
-  flashSessionTitleRow: {
-    width: "100%",
-  },
-  flashSessionTitleWithCount: {
+  /** Jeden wiersz nagłówka sesji: lewa treść + prawa (tryb | Anuluj, Postęp | 1 z N). */
+  flashSessionHeaderLine: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
     width: "100%",
-    flexWrap: "wrap",
+    minWidth: 0,
+    gap: 12,
+  },
+  /** Etykieta trybu, zajmuje wolne miejsce w pierwszym wierszu (ellipsis). */
+  flashSessionLabelFlexible: {
+    flex: 1,
+    minWidth: 0,
+  },
+  /** Licznik „1 z N”, przy prawej krawędzi wiersza. */
+  flashSessionCountWrap: {
+    marginLeft: "auto",
+    flexShrink: 0,
   },
   flashSessionLabel: {
     fontSize: 11,
@@ -425,7 +494,17 @@ export const revisionScreenStyles = StyleSheet.create({
     minHeight: 120,
     width: "100%",
     zIndex: 0,
+    justifyContent: "center",
+    paddingHorizontal: 24,
+    paddingVertical: 10,
     ...(Platform.OS === "android" ? { elevation: 0 } : {}),
+  },
+  /** Obejmuje `RevisionFlipCard`, animacja wejścia/wyjścia przy Dalej / Wstecz. */
+  revisionDeckCardWrap: {
+    flex: 1,
+    width: "100%",
+    justifyContent: "center",
+    alignItems: "center",
   },
   revisionRevealScroll: {
     flex: 1,
@@ -436,10 +515,58 @@ export const revisionScreenStyles = StyleSheet.create({
   revisionRevealScrollContent: {
     flexGrow: 1,
     paddingBottom: 12,
-    /** Minimalny odstęp karty od krawędzi ekranu (górny pasek ma większy inset). */
     paddingHorizontal: 10,
     paddingTop: 8,
+    justifyContent: "center",
+  },
+  /** Korzeń twarzy fiszki, identyczna ramka na przód i tył (wysokość ze sceny). */
+  revisionFlipFaceRoot: {
+    flex: 1,
+    width: "100%",
+    minHeight: 0,
+  },
+  revisionFlipShell: {
+    flex: 1,
+    width: "100%",
+    minHeight: 0,
+  },
+  revisionFlipFaceColumn: {
+    flex: 1,
+    minHeight: 0,
+    gap: 16,
+  },
+  /** Lewa strona paska (pill), bez osobnego Pressable; obrót obsługuje karta. */
+  revisionFlipToolbarTitle: {
+    flex: 1,
+    marginRight: 12,
+    flexDirection: "row",
+    alignItems: "center",
     justifyContent: "flex-start",
+    minHeight: 44,
+  },
+  /** Treść przodu pod paskiem, wypełnia resztę karty (wraz z paddingiem focalInner). */
+  revisionFlipTapFrontInner: {
+    flex: 1,
+    minHeight: 0,
+    width: "100%",
+    justifyContent: "center",
+  },
+  /**
+   * Tylko hasło + IPA: lekko w górę w obrębie przodu (~jak wysokość dolnej sekcji z przyciskami),
+   * bez przesuwania całej ramki fiszki.
+   */
+  revisionFlipFrontWordNudge: {
+    marginTop: -76,
+  },
+  /**
+   * Tył fiszki: wypełnia kolumnę pod obramowaniem; treść wyśrodkowana w pionie
+   * między górną a dolną krawędzią (bez ScrollView, zakładamy, że się mieści).
+   */
+  revisionFlipBackContentWrap: {
+    flex: 1,
+    minHeight: 0,
+    width: "100%",
+    justifyContent: "center",
   },
   card: {
     flex: 1,
@@ -626,33 +753,37 @@ export const revisionScreenStyles = StyleSheet.create({
     fontFamily: StitchFonts.body,
     fontSize: 14,
   },
+  /** Dolny pasek: tylko Wstecz + Dalej / Zakończ (bez zamknięcia po lewej). */
   flashNavRow: {
     marginTop: "auto",
-    paddingTop: 16,
+    paddingTop: 20,
     flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
+    alignItems: "stretch",
+    gap: 14,
     width: "100%",
     maxWidth: 440,
     alignSelf: "center",
-    paddingHorizontal: 20,
-    /** paddingBottom domyślnie; iPhone: nadpisane przez safe area w komponencie */
-    paddingBottom: 8,
+    paddingHorizontal: 24,
+    paddingBottom: 4,
   },
-  /**
-   * Zamknięcie powtórki po lewej od „Wstecz”.
-   * Delikatny ton „error” (nie pełny alert), żeby było widać, że to wyjście z sesji.
-   */
-  flashNavClose: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: "center",
-    justifyContent: "center",
+  /** Blok: wiersz 1 (tryb + Anuluj), wiersz 2 (Postęp + licznik). */
+  flashSessionHeaderStack: {
+    width: "100%",
+    gap: 8,
+    marginBottom: 4,
+  },
+  flashAbortPressable: {
     flexShrink: 0,
-    backgroundColor: "rgba(168, 54, 75, 0.1)",
-    borderWidth: 1,
-    borderColor: "rgba(168, 54, 75, 0.38)",
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+    marginTop: -2,
+  },
+  flashAbortText: {
+    fontSize: 14,
+    fontFamily: StitchFonts.bodySemi,
+    color: StitchColors.onSurfaceVariant,
+    textDecorationLine: "underline",
+    letterSpacing: 0.2,
   },
   actions: {
     marginTop: "auto",
@@ -661,11 +792,13 @@ export const revisionScreenStyles = StyleSheet.create({
   },
   flashNavButton: {
     flex: 1,
+    minWidth: 0,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
     paddingVertical: 14,
+    paddingHorizontal: 8,
     borderRadius: StitchRadius.lg,
   },
   flashNavPrev: {
@@ -725,22 +858,7 @@ export const revisionScreenStyles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingBottom: 40,
   },
-  hubUnlockBanner: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: StitchRadius.md,
-    backgroundColor: StitchColors.surfaceContainerHigh,
-    marginBottom: 4,
-    borderWidth: 1,
-    borderColor: `${StitchColors.outlineVariant}33`,
-  },
-  hubUnlockBannerText: {
-    fontSize: 14,
-    fontFamily: StitchFonts.bodyMedium,
-    color: StitchColors.onSurfaceVariant,
-    textAlign: "center",
-    lineHeight: 20,
-  },
+  // (unlock banner styles removed; replaced by reusable component)
   hubQuickSizeHint: {
     fontSize: 11,
     fontFamily: StitchFonts.body,
@@ -893,7 +1011,15 @@ export const revisionScreenStyles = StyleSheet.create({
     minHeight: 0,
     alignItems: "stretch",
   },
-  /** Pill „Recommended” — lewy górny róg, żeby nie kolidować z ikoną dekoracyjną po prawej. */
+  /** Daily Review ukończony dziś, subtelny akcent „success”, spójny z secondary w UI. */
+  hubDailyFeaturedCompleted: {
+    borderColor: "rgba(40, 108, 52, 0.42)",
+    shadowColor: "#286C34",
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+  },
+  /** Pill „Recommended”, lewy górny róg, żeby nie kolidować z ikoną dekoracyjną po prawej. */
   hubDailyRecommendedBadge: {
     position: "absolute",
     top: 14,
@@ -915,6 +1041,29 @@ export const revisionScreenStyles = StyleSheet.create({
     color: StitchColors.primary,
     letterSpacing: 0.4,
     textTransform: "uppercase",
+  },
+  hubDailyCompletedBadge: {
+    backgroundColor: "rgba(40, 108, 52, 0.12)",
+    borderColor: "rgba(40, 108, 52, 0.35)",
+  },
+  hubDailyCompletedBadgeText: {
+    fontSize: 11,
+    fontFamily: StitchFonts.bodySemi,
+    color: "#286C34",
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+  },
+  hubDailyDoneRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flexShrink: 1,
+  },
+  hubDailyDoneLabel: {
+    fontSize: 15,
+    fontFamily: StitchFonts.bodySemi,
+    color: "#286C34",
+    letterSpacing: 0.2,
   },
   /** Tytuł + opis: miejsce pod ikonę z prawej (absolute). */
   hubDailyTextBlock: {
@@ -1066,26 +1215,6 @@ export const revisionScreenStyles = StyleSheet.create({
   hubSmallMetaText: {
     fontSize: 13,
     fontFamily: StitchFonts.bodySemi,
-    color: StitchColors.onSurfaceVariant,
-  },
-  hubAchievement: {
-    padding: 32,
-    borderRadius: StitchRadius.lg,
-    borderWidth: 1,
-    borderColor: `${StitchColors.primary}14`,
-    backgroundColor: `${StitchColors.primary}0C`,
-    flexDirection: "column",
-    gap: 16,
-  },
-  hubAchievementTitle: {
-    fontSize: 22,
-    fontFamily: StitchFonts.headline,
-    color: StitchColors.onSurface,
-    marginBottom: 4,
-  },
-  hubAchievementDesc: {
-    fontSize: 15,
-    fontFamily: StitchFonts.bodyMedium,
     color: StitchColors.onSurfaceVariant,
   },
 });

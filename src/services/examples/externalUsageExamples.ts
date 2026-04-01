@@ -15,7 +15,7 @@ const TATOEBA_SENTENCES = 'https://api.tatoeba.org/unstable/sentences';
 /** ISO 639-3 dla Tatoeba (`lang`): używamy wyłącznie korpusu angielskiego. */
 const TATOEBA_ENG = 'eng';
 
-/** Same key as `buildCacheKey` — dedupes concurrent fetches before AsyncStorage fills. */
+/** Same key as `buildCacheKey`, dedupes concurrent fetches before AsyncStorage fills. */
 const inFlightExternalExamples = new Map<string, Promise<UsageExampleLine[]>>();
 
 type DictionaryEntry = {

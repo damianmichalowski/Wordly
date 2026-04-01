@@ -1,13 +1,11 @@
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
 import { CenteredMessageCta } from '@/src/components/ui/CenteredMessageCta';
 import { RevisionFlashcardMode } from '@/src/features/revision/components/RevisionFlashcardMode';
 import { RevisionHub } from '@/src/features/revision/components/RevisionHub';
-import { RevisionKnownWordsList } from '@/src/features/revision/components/RevisionKnownWordsList';
 import {
   getFlashSessionLabel,
-  getSessionScreenTitle,
 } from '@/src/features/revision/revisionSessionUi';
 import { revisionScreenStyles } from '@/src/features/revision/revisionScreenStyles';
 import { useRevision } from '@/src/features/revision/useRevision';
@@ -22,20 +20,19 @@ export default function RevisionHubTabScreen() {
     isLoading,
     profile,
     knownWords,
-    sortPrefs,
-    setRevisionSortPrefs,
     sessionPhase,
     sessionConfig,
+    sessionFetchPending,
     enterSession,
     exitSessionToHub,
+    cancelHubRevisionSession,
     hubCounts,
+    dailyRevisionCompletedToday,
     mode,
     flashDeck,
     index,
     isFlipped,
     activeCard,
-    startFlashcards,
-    exitFlashcards,
     completeRevisionSession,
     flip,
     next,
@@ -67,8 +64,23 @@ export default function RevisionHubTabScreen() {
       <RevisionHub
         knownTotal={hubCounts.all}
         counts={hubCounts}
+        dailyReviewCompletedToday={dailyRevisionCompletedToday}
         onSelectSession={enterSession}
       />
+    );
+  }
+
+  if (sessionPhase === 'session' && sessionFetchPending) {
+    return (
+      <View
+        style={[
+          revisionScreenStyles.centered,
+          { paddingTop: 24, paddingBottom: 24 },
+        ]}
+      >
+        <ActivityIndicator size="small" color={StitchColors.primary} />
+        <Text style={revisionScreenStyles.subtitle}>Ładowanie sesji…</Text>
+      </View>
     );
   }
 
@@ -95,7 +107,7 @@ export default function RevisionHubTabScreen() {
         index={index}
         activeCard={activeCard}
         isFlipped={isFlipped}
-        exitFlashcards={exitFlashcards}
+        onAbortSession={cancelHubRevisionSession}
         flip={flip}
         next={next}
         previous={previous}
@@ -105,19 +117,21 @@ export default function RevisionHubTabScreen() {
         onLastCardContinue={
           sessionPhase === 'session'
             ? () => {
-                const stats = completeRevisionSession();
-                if (stats) {
-                  router.push({
-                    pathname: '/revision-session-complete',
-                    params: {
-                      cardsReviewed: String(stats.cardsReviewed),
-                      sessionDurationMs: String(stats.sessionDurationMs),
-                      mode: stats.mode,
-                    },
-                  });
-                } else {
-                  exitFlashcards();
-                }
+                void (async () => {
+                  const stats = await completeRevisionSession();
+                  if (stats) {
+                    router.push({
+                      pathname: '/revision-session-complete',
+                      params: {
+                        cardsReviewed: String(stats.cardsReviewed),
+                        sessionDurationMs: String(stats.sessionDurationMs),
+                        mode: stats.mode,
+                      },
+                    });
+                  } else {
+                    cancelHubRevisionSession();
+                  }
+                })();
               }
             : undefined
         }
@@ -125,19 +139,5 @@ export default function RevisionHubTabScreen() {
     );
   }
 
-  return (
-    <RevisionKnownWordsList
-      knownWords={knownWords}
-      sortPrefs={sortPrefs}
-      onSortPrefsChange={setRevisionSortPrefs}
-      onStartFlashcards={startFlashcards}
-      onOpenWord={(w) => router.push(`/word/${w.id}?from=revision`)}
-      headerTitle={
-        sessionConfig ? getSessionScreenTitle(sessionConfig) : 'Revision Hub'
-      }
-      onBackPress={exitSessionToHub}
-      backAccessibilityLabel="Wróć do Revision Hub"
-      sessionVariant
-    />
-  );
+  return null;
 }

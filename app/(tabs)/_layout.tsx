@@ -67,15 +67,15 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="search"
+        name="library"
         options={{
-          title: 'Szukaj',
+          title: 'Biblioteka',
           tabBarIcon: ({ color }) => (
             <SymbolView
               name={{
-                ios: 'magnifyingglass',
-                android: 'search',
-                web: 'search',
+                ios: 'books.vertical.fill',
+                android: 'library_books',
+                web: 'library_books',
               }}
               tintColor={color}
               size={28}

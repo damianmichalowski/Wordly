@@ -16,8 +16,6 @@ Generated as part of architecture review. **Behavior-preserving** cleanups prefe
 
 **Keep:** `src/components/Themed.tsx` — used by `app/+not-found.tsx` (przeniesione z root `components/`).
 
-**Needs confirmation:** `scripts/vocabulary-seed/**` — large tooling; not part of runtime app; keep unless you want scripts in a separate repo.
-
 ### Duplicated logic
 
 - **Chip-style selectors** — consolidated into `src/components/ui/SelectionChip.tsx` (onboarding + settings).
@@ -28,7 +26,7 @@ Generated as part of architecture review. **Behavior-preserving** cleanups prefe
 | File | ~Lines | Risk |
 |------|--------|------|
 | `app/(tabs)/revision.tsx` | thin route | Logic split into `src/features/revision/components/*`. |
-| `scripts/.../applySqlChunks.ts` | ~423 | Seed tooling; OK as script, not UI. |
+| ~~`scripts/.../applySqlChunks.ts`~~ | — | Usunięte wraz ze starym pipeline seedów. |
 | `src/services/api/vocabularyApi.ts` | ~214 | Acceptable; could split query vs mapping later. |
 
 ### Folder structure
@@ -44,7 +42,7 @@ Generated as part of architecture review. **Behavior-preserving** cleanups prefe
 ### Typing
 
 - No widespread `: any` in TS/TSX (grep clean for `as any` / `: any`).
-- `Database` types in `src/types/database.ts` align with Supabase usage; `progressApi` uses typed rows/inserts — good.
+- `Database` w `src/types/database.ts` jest tymczasowo `any` do czasu nowego schematu i `supabase gen types`.
 
 ### Unnecessary abstractions
 

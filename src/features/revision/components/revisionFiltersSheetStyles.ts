@@ -159,34 +159,6 @@ export const revisionFiltersSheetStyles = StyleSheet.create({
   dateSegmentLabelOn: {
     color: StitchColors.onPrimary,
   },
-  sortLevelGrid: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  sortLevelCell: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 16,
-    paddingHorizontal: 10,
-    borderRadius: StitchRadius.lg,
-    backgroundColor: StitchColors.surfaceContainerLow,
-  },
-  sortLevelCellOn: {
-    backgroundColor: StitchColors.surfaceContainer,
-  },
-  sortLevelCellText: {
-    fontSize: 13,
-    fontFamily: StitchFonts.bodySemi,
-    color: StitchColors.onSurface,
-    textAlign: "center",
-    flexShrink: 1,
-  },
-  sortLevelCellTextOn: {
-    color: StitchColors.primary,
-  },
   footer: {
     paddingHorizontal: 22,
     paddingTop: 12,

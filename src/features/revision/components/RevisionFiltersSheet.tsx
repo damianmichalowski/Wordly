@@ -31,19 +31,23 @@ import {
   DEFAULT_REVISION_SORT_PREFS,
   type RevisionSortPrefs,
 } from "@/src/services/revision/revisionSortPrefs";
-import { cefrLevels, type CefrLevel } from "@/src/types/cefr";
+import {
+  LIBRARY_TIER_LABEL,
+  libraryLevelTiers,
+  type LibraryLevelTier,
+} from "@/src/types/cefr";
 import { StitchColors } from "@/src/theme/wordlyStitchTheme";
 
 import { revisionFiltersSheetStyles as s } from "./revisionFiltersSheetStyles";
 
 export type RevisionFiltersApplyPayload = {
   sortPrefs: RevisionSortPrefs;
-  selectedLevels: CefrLevel[];
+  selectedTiers: LibraryLevelTier[];
 };
 
 type Draft = {
   sortPrefs: RevisionSortPrefs;
-  selectedLevels: CefrLevel[];
+  selectedTiers: LibraryLevelTier[];
 };
 
 type Props = {
@@ -51,7 +55,7 @@ type Props = {
   onClose: () => void;
   onApply: (payload: RevisionFiltersApplyPayload) => void;
   initialSortPrefs: RevisionSortPrefs;
-  initialSelectedLevels: CefrLevel[];
+  initialSelectedTiers: LibraryLevelTier[];
   /** Gdy false, ukryj sekcję poziomów (brak słów w bibliotece). */
   showLevelSections: boolean;
 };
@@ -61,68 +65,48 @@ export function RevisionFiltersSheet({
   onClose,
   onApply,
   initialSortPrefs,
-  initialSelectedLevels,
+  initialSelectedTiers,
   showLevelSections,
 }: Props) {
   const insets = useSafeAreaInsets();
   const [draft, setDraft] = useState<Draft>(() => ({
     sortPrefs: { ...initialSortPrefs },
-    selectedLevels: [...initialSelectedLevels],
+    selectedTiers: [...initialSelectedTiers],
   }));
 
   useEffect(() => {
     if (visible) {
       setDraft({
         sortPrefs: { ...initialSortPrefs },
-        selectedLevels: [...initialSelectedLevels],
+        selectedTiers: [...initialSelectedTiers],
       });
     }
-  }, [visible, initialSortPrefs, initialSelectedLevels]);
+  }, [visible, initialSortPrefs, initialSelectedTiers]);
 
   const resetDraft = useCallback(() => {
     setDraft({
       sortPrefs: { ...DEFAULT_REVISION_SORT_PREFS },
-      selectedLevels: [],
+      selectedTiers: [],
     });
   }, []);
 
   const apply = useCallback(() => {
     onApply({
       sortPrefs: draft.sortPrefs,
-      selectedLevels: draft.selectedLevels,
+      selectedTiers: draft.selectedTiers,
     });
   }, [draft, onApply]);
 
-  /** Ponowne kliknięcie tej samej opcji = wyłączenie (`none`). Wybór drugiej = wyłącza pierwszą. */
-  const toggleCefrAsc = useCallback(() => {
-    setDraft((prev) => ({
-      ...prev,
-      sortPrefs: {
-        ...prev.sortPrefs,
-        cefrOrder: prev.sortPrefs.cefrOrder === "asc" ? "none" : "asc",
-      },
-    }));
-  }, []);
-
-  const toggleCefrDesc = useCallback(() => {
-    setDraft((prev) => ({
-      ...prev,
-      sortPrefs: {
-        ...prev.sortPrefs,
-        cefrOrder: prev.sortPrefs.cefrOrder === "desc" ? "none" : "desc",
-      },
-    }));
-  }, []);
-
-  const toggleLevel = useCallback((level: CefrLevel) => {
+  const toggleTier = useCallback((tier: LibraryLevelTier) => {
     setDraft((prev) => {
-      const has = prev.selectedLevels.includes(level);
-      const selectedLevels = has
-        ? prev.selectedLevels.filter((l) => l !== level)
-        : [...prev.selectedLevels, level].sort(
-            (a, b) => cefrLevels.indexOf(a) - cefrLevels.indexOf(b),
+      const has = prev.selectedTiers.includes(tier);
+      const selectedTiers = has
+        ? prev.selectedTiers.filter((t) => t !== tier)
+        : [...prev.selectedTiers, tier].sort(
+            (a, b) =>
+              libraryLevelTiers.indexOf(a) - libraryLevelTiers.indexOf(b),
           );
-      return { ...prev, selectedLevels };
+      return { ...prev, selectedTiers };
     });
   }, []);
 
@@ -210,14 +194,14 @@ export function RevisionFiltersSheet({
           >
             {showLevelSections ? (
               <View style={s.section}>
-                <Text style={s.sectionLabel}>Poziom (CEFR)</Text>
+                <Text style={s.sectionLabel}>Poziom</Text>
                 <View style={s.chipWrap}>
-                  {cefrLevels.map((level) => {
-                    const on = draft.selectedLevels.includes(level);
+                  {libraryLevelTiers.map((tier) => {
+                    const on = draft.selectedTiers.includes(tier);
                     return (
                       <Pressable
-                        key={level}
-                        onPress={() => toggleLevel(level)}
+                        key={tier}
+                        onPress={() => toggleTier(tier)}
                         android_ripple={ANDROID_RIPPLE_SURFACE}
                         style={({ pressed }) => [
                           s.levelChip,
@@ -230,7 +214,7 @@ export function RevisionFiltersSheet({
                         <Text
                           style={[s.levelChipText, on && s.levelChipTextOn]}
                         >
-                          {level}
+                          {LIBRARY_TIER_LABEL[tier]}
                         </Text>
                       </Pressable>
                     );
@@ -296,70 +280,6 @@ export function RevisionFiltersSheet({
                     </View>
                   </View>
                 </View>
-              </View>
-            </View>
-
-            <View style={[s.section, { marginBottom: 8 }]}>
-              <Text style={s.sectionLabel}>Sortowanie poziomów</Text>
-              <View style={s.sortLevelGrid}>
-                <Pressable
-                  onPress={toggleCefrAsc}
-                  android_ripple={ANDROID_RIPPLE_SURFACE}
-                  style={({ pressed }) => [
-                    s.sortLevelCell,
-                    draft.sortPrefs.cefrOrder === "asc" && s.sortLevelCellOn,
-                    surfacePressStyle(pressed, false),
-                  ]}
-                >
-                  <Text
-                    style={[
-                      s.sortLevelCellText,
-                      draft.sortPrefs.cefrOrder === "asc" &&
-                        s.sortLevelCellTextOn,
-                    ]}
-                    numberOfLines={2}
-                  >
-                    A1 → C2
-                  </Text>
-                  <Ionicons
-                    name="trending-up"
-                    size={20}
-                    color={
-                      draft.sortPrefs.cefrOrder === "asc"
-                        ? StitchColors.primary
-                        : StitchColors.outlineVariant
-                    }
-                  />
-                </Pressable>
-                <Pressable
-                  onPress={toggleCefrDesc}
-                  android_ripple={ANDROID_RIPPLE_SURFACE}
-                  style={({ pressed }) => [
-                    s.sortLevelCell,
-                    draft.sortPrefs.cefrOrder === "desc" && s.sortLevelCellOn,
-                    surfacePressStyle(pressed, false),
-                  ]}
-                >
-                  <Text
-                    style={[
-                      s.sortLevelCellText,
-                      draft.sortPrefs.cefrOrder === "desc" &&
-                        s.sortLevelCellTextOn,
-                    ]}
-                    numberOfLines={2}
-                  >
-                    C2 → A1
-                  </Text>
-                  <Ionicons
-                    name="trending-down"
-                    size={20}
-                    color={
-                      draft.sortPrefs.cefrOrder === "desc"
-                        ? StitchColors.primary
-                        : StitchColors.outlineVariant
-                    }
-                  />
-                </Pressable>
               </View>
             </View>
           </ScrollView>

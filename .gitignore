@@ -71,3 +71,11 @@ coverage/
 # generated native folders
 /ios
 /android
+
+# Supabase (lokalne artefakty CLI / nigdy do repo)
+supabase/.branches/
+supabase/.temp/
+supabase/.env
+supabase/.env.*
+supabase/.env*.local
+supabase/.env.keys

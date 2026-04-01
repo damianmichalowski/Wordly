@@ -1,29 +1,34 @@
-import { createContext, useContext, useMemo, useState, type PropsWithChildren } from 'react';
+import { createContext, useContext, useMemo, useState, type PropsWithChildren } from 'react'
 
-import type { CefrLevel } from '@/src/types/cefr';
-import type { LanguageCode } from '@/src/types/language';
-import type { DisplayLevelPolicy } from '@/src/types/profile';
+import type {
+  LearningLevel,
+  LearningModeType,
+} from '@/src/features/profile/types/profile.types'
 
 export type OnboardingDraft = {
-  sourceLanguage: LanguageCode;
-  targetLanguage: LanguageCode;
-  currentLevel: CefrLevel;
-  displayLevelPolicy: DisplayLevelPolicy;
+  nativeLanguageId: string | null
+  learningLanguageId: string | null
+  learningModeType: LearningModeType
+  learningLevel: LearningLevel | null
+  selectedCategoryId: string | null
 };
 
 type OnboardingContextValue = {
   draft: OnboardingDraft;
-  setSourceLanguage: (value: LanguageCode) => void;
-  setTargetLanguage: (value: LanguageCode) => void;
-  setCurrentLevel: (value: CefrLevel) => void;
+  setNativeLanguageId: (id: string) => void
+  setLearningLanguageId: (id: string) => void
+  setLearningModeType: (value: LearningModeType) => void
+  setLearningLevel: (value: LearningLevel | null) => void
+  setSelectedCategoryId: (id: string | null) => void
   reset: () => void;
 };
 
 const initialDraft: OnboardingDraft = {
-  sourceLanguage: 'pl',
-  targetLanguage: 'en',
-  currentLevel: 'A1',
-  displayLevelPolicy: 'next-level',
+  nativeLanguageId: null,
+  learningLanguageId: null,
+  learningModeType: 'difficulty',
+  learningLevel: null,
+  selectedCategoryId: null,
 };
 
 const OnboardingContext = createContext<OnboardingContextValue | null>(null);
@@ -34,9 +39,27 @@ export function OnboardingProvider({ children }: PropsWithChildren) {
   const value = useMemo<OnboardingContextValue>(
     () => ({
       draft,
-      setSourceLanguage: (value) => setDraft((prev) => ({ ...prev, sourceLanguage: value })),
-      setTargetLanguage: (value) => setDraft((prev) => ({ ...prev, targetLanguage: value })),
-      setCurrentLevel: (value) => setDraft((prev) => ({ ...prev, currentLevel: value })),
+      setNativeLanguageId: (id) =>
+        setDraft((prev) => ({ ...prev, nativeLanguageId: id })),
+      setLearningLanguageId: (id) =>
+        setDraft((prev) => ({ ...prev, learningLanguageId: id })),
+      setLearningModeType: (value) =>
+        setDraft((prev) => ({
+          ...prev,
+          learningModeType: value,
+        })),
+      setLearningLevel: (value) =>
+        setDraft((prev) => ({
+          ...prev,
+          learningLevel: value,
+          ...(value != null ? { selectedCategoryId: null } : {}),
+        })),
+      setSelectedCategoryId: (id) =>
+        setDraft((prev) => ({
+          ...prev,
+          selectedCategoryId: id,
+          ...(id != null ? { learningLevel: null } : {}),
+        })),
       reset: () => setDraft(initialDraft),
     }),
     [draft],

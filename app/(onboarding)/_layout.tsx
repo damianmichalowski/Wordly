@@ -9,6 +9,7 @@ export default function OnboardingLayout() {
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="language-pair" options={{ headerShown: false }} />
         <Stack.Screen name="level" options={{ headerShown: false }} />
+        <Stack.Screen name="widget" options={{ headerShown: false }} />
       </Stack>
     </OnboardingProvider>
   );

@@ -10,6 +10,7 @@ import {
 } from "react-native";
 
 import { ScreenHeader } from "@/src/components/layout/ScreenHeader";
+import { CenteredUnlockCtaCard } from "@/src/components/ui/CenteredUnlockCtaCard";
 import {
   ANDROID_RIPPLE_ICON_ROUND,
   ANDROID_RIPPLE_PRIMARY,
@@ -18,14 +19,22 @@ import {
   primarySolidPressStyle,
   surfacePressStyle,
 } from "@/src/components/ui/interaction";
-import { cefrLevels, type CefrLevel } from "@/src/types/cefr";
+import {
+  LIBRARY_TIER_CEFR_LEVELS,
+  LIBRARY_TIER_LABEL,
+  type CefrLevel,
+  type LibraryLevelTier,
+} from "@/src/types/cefr";
 import { StitchColors } from "@/src/theme/wordlyStitchTheme";
 import {
   vocabularyWordDisplayTargetText,
   type VocabularyWord,
 } from "@/src/types/words";
 
-import type { RevisionSortPrefs } from "@/src/services/revision/revisionSortPrefs";
+import type {
+  RevisionSortPrefs,
+  RevisionTimeOrder,
+} from "@/src/services/revision/revisionSortPrefs";
 
 import {
   RevisionFiltersSheet,
@@ -39,6 +48,9 @@ type RevisionKnownWordsListProps = {
   onSortPrefsChange: (prefs: RevisionSortPrefs) => void;
   onStartFlashcards: () => void;
   onOpenWord: (word: VocabularyWord) => void;
+  /** Gdy `true` i lista jest pusta (0 słów), pokazuje „unlock” jako empty state i blokuje wyszukiwarkę/filtry. */
+  showUnlockEmptyState?: boolean;
+  onUnlockPrimaryPress?: () => void;
   /** Domyślnie „Biblioteka”; w sesji np. tytuł trybu. */
   headerTitle?: string;
   onBackPress?: () => void;
@@ -51,43 +63,58 @@ type RevisionKnownWordsListProps = {
   showFlashcardHero?: boolean;
 };
 
-/**
- * A1/A2: szare; B1/B2: niebieski; C1/C2: zielony (jaśniejszy / ciemniejszy w parze).
- */
-const CEFR_PILL: Record<CefrLevel, { bg: string; fg: string }> = {
-  A1: { bg: "#F2F3F5", fg: "#5B6061" },
-  A2: { bg: "#D8DCDE", fg: "#2F3334" },
-  B1: { bg: "#E4E9FF", fg: "#2F46B8" },
-  B2: { bg: "#C9D4FA", fg: "#1A237E" },
-  C1: { bg: "#E8F5E9", fg: "#2E7D32" },
-  C2: { bg: "#C8E6C9", fg: "#1B5E20" },
-};
-
-function cefrPillStyle(level: string): { bg: string; fg: string } {
-  return (
-    CEFR_PILL[level as CefrLevel] ?? {
-      bg: StitchColors.surfaceContainerHigh,
-      fg: StitchColors.onSurfaceVariant,
-    }
-  );
-}
-
-function formatLevelsList(levels: CefrLevel[]): string {
-  return [...levels]
-    .sort((a, b) => cefrLevels.indexOf(a) - cefrLevels.indexOf(b))
+function formatTiersList(tiers: LibraryLevelTier[]): string {
+  return [...tiers]
+    .map((t) => LIBRARY_TIER_LABEL[t])
     .join(", ");
 }
 
-function buildEmptyFilterHint(selectedLevels: CefrLevel[], q: string): string {
+function buildEmptyFilterHint(
+  selectedTiers: LibraryLevelTier[],
+  q: string,
+): string {
   const qTrim = q.trim();
-  const levelsLabel = formatLevelsList(selectedLevels);
-  if (selectedLevels.length > 0 && qTrim) {
-    return `Brak wyników: poziomy ${levelsLabel}, fraza „${qTrim}”`;
+  const tiersLabel = formatTiersList(selectedTiers);
+  if (selectedTiers.length > 0 && qTrim) {
+    return `Brak wyników: ${tiersLabel}, fraza „${qTrim}”`;
   }
-  if (selectedLevels.length > 0) {
-    return `Brak słów dla wybranych poziomów (${levelsLabel})`;
+  if (selectedTiers.length > 0) {
+    return `Brak słów dla wybranych poziomów (${tiersLabel})`;
   }
   return `Brak wyników dla „${qTrim}”`;
+}
+
+function tiersToCefrSet(tiers: LibraryLevelTier[]): Set<CefrLevel> {
+  const set = new Set<CefrLevel>();
+  for (const t of tiers) {
+    for (const lvl of LIBRARY_TIER_CEFR_LEVELS[t]) {
+      set.add(lvl);
+    }
+  }
+  return set;
+}
+
+/** Kolejność wg `known_at`: najnowsze = malejąco, najstarsze = rosnąco; bez daty na końcu. */
+function sortWordsByKnownAt(
+  list: VocabularyWord[],
+  timeOrder: RevisionTimeOrder,
+): VocabularyWord[] {
+  const newestFirst = timeOrder === "newest";
+  return [...list].sort((a, b) => {
+    const ta = a.knownAt ? Date.parse(a.knownAt) : NaN;
+    const tb = b.knownAt ? Date.parse(b.knownAt) : NaN;
+    const aOk = Number.isFinite(ta);
+    const bOk = Number.isFinite(tb);
+    if (aOk && bOk && ta !== tb) {
+      return newestFirst ? tb - ta : ta - tb;
+    }
+    if (aOk !== bOk) {
+      return aOk ? -1 : 1;
+    }
+    return a.sourceText.localeCompare(b.sourceText, undefined, {
+      sensitivity: "base",
+    });
+  });
 }
 
 /** Poza komponentem listy (stabilna referencja dla `ListEmptyComponent`). */
@@ -113,8 +140,6 @@ const RevisionKnownWordRow = memo(function RevisionKnownWordRow({
   item: VocabularyWord;
   onOpenWord: (word: VocabularyWord) => void;
 }) {
-  const levelColors = cefrPillStyle(item.cefrLevel);
-
   return (
     <Pressable
       android_ripple={ANDROID_RIPPLE_SURFACE}
@@ -124,13 +149,6 @@ const RevisionKnownWordRow = memo(function RevisionKnownWordRow({
       ]}
       onPress={() => onOpenWord(item)}
     >
-      <View style={styles.rowLevelCol}>
-        <View style={[styles.rowCefrPill, { backgroundColor: levelColors.bg }]}>
-          <Text style={[styles.rowCefrPillText, { color: levelColors.fg }]}>
-            {item.cefrLevel}
-          </Text>
-        </View>
-      </View>
       <View style={styles.rowMain}>
         <Text style={styles.rowWord} numberOfLines={1}>
           {item.sourceText}
@@ -155,6 +173,7 @@ type RevisionListHeaderProps = {
   onSearchChange: (q: string) => void;
   onOpenFilters: () => void;
   activeFilterCount: number;
+  controlsDisabled?: boolean;
 };
 
 const RevisionListHeader = memo(function RevisionListHeader({
@@ -166,6 +185,7 @@ const RevisionListHeader = memo(function RevisionListHeader({
   onSearchChange,
   onOpenFilters,
   activeFilterCount,
+  controlsDisabled = false,
 }: RevisionListHeaderProps) {
   const [searchFocused, setSearchFocused] = useState(false);
   const statsLine = sessionVariant
@@ -217,6 +237,7 @@ const RevisionListHeader = memo(function RevisionListHeader({
           style={[
             styles.filtersSearchFieldCompact,
             searchFocused && styles.filtersSearchFieldFocused,
+            controlsDisabled && styles.buttonDisabled,
           ]}
         >
           <Ionicons
@@ -238,18 +259,21 @@ const RevisionListHeader = memo(function RevisionListHeader({
             autoCapitalize="none"
             clearButtonMode="while-editing"
             returnKeyType="search"
+            editable={!controlsDisabled}
           />
         </View>
         <Pressable
           android_ripple={ANDROID_RIPPLE_ICON_ROUND}
           style={({ pressed }) => [
             styles.filtersOpenBtn,
+            controlsDisabled && styles.buttonDisabled,
             surfacePressStyle(pressed, false),
           ]}
           hitSlop={HIT_SLOP_MINI}
           onPress={onOpenFilters}
           accessibilityRole="button"
           accessibilityLabel="Filtry i sortowanie"
+          disabled={controlsDisabled}
         >
           <Ionicons
             name="options-outline"
@@ -279,6 +303,8 @@ export function RevisionKnownWordsList({
   onSortPrefsChange,
   onStartFlashcards,
   onOpenWord,
+  showUnlockEmptyState = false,
+  onUnlockPrimaryPress,
   headerTitle = "Biblioteka",
   onBackPress,
   sessionVariant = false,
@@ -286,7 +312,7 @@ export function RevisionKnownWordsList({
   backAccessibilityLabel = "Wróć do Revision Hub",
 }: RevisionKnownWordsListProps) {
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedLevels, setSelectedLevels] = useState<CefrLevel[]>([]);
+  const [selectedTiers, setSelectedTiers] = useState<LibraryLevelTier[]>([]);
   const [sheetVisible, setSheetVisible] = useState(false);
 
   const activeFilterCount = useMemo(() => {
@@ -294,20 +320,17 @@ export function RevisionKnownWordsList({
     if (searchQuery.trim()) {
       n += 1;
     }
-    n += selectedLevels.length;
+    n += selectedTiers.length;
     if (sortPrefs.timeOrder !== "newest") {
       n += 1;
     }
-    if (sortPrefs.cefrOrder !== "none") {
-      n += 1;
-    }
     return n;
-  }, [searchQuery, selectedLevels, sortPrefs]);
+  }, [searchQuery, selectedTiers, sortPrefs]);
 
   const applyFilters = useCallback(
     (payload: RevisionFiltersApplyPayload) => {
       onSortPrefsChange(payload.sortPrefs);
-      setSelectedLevels(payload.selectedLevels);
+      setSelectedTiers(payload.selectedTiers);
       setSheetVisible(false);
     },
     [onSortPrefsChange],
@@ -315,20 +338,22 @@ export function RevisionKnownWordsList({
 
   const filteredWords = useMemo(() => {
     let list = knownWords;
-    if (selectedLevels.length > 0) {
-      const set = new Set(selectedLevels);
-      list = list.filter((w) => set.has(w.cefrLevel));
+    if (selectedTiers.length > 0) {
+      const set = tiersToCefrSet(selectedTiers);
+      list = list.filter((w) => set.has(w.cefrLevel as CefrLevel));
     }
     const q = searchQuery.trim().toLowerCase();
-    if (!q) {
-      return list;
-    }
-    return list.filter((w) => {
-      const s = w.sourceText.toLowerCase();
-      const t = vocabularyWordDisplayTargetText(w).toLowerCase();
-      return s.includes(q) || t.includes(q);
-    });
-  }, [knownWords, searchQuery, selectedLevels]);
+    const filtered = !q
+      ? list
+      : list.filter((w) => {
+          const s = w.sourceText.toLowerCase();
+          const t = vocabularyWordDisplayTargetText(w).toLowerCase();
+          return s.includes(q) || t.includes(q);
+        });
+    return sortWordsByKnownAt(filtered, sortPrefs.timeOrder);
+  }, [knownWords, searchQuery, selectedTiers, sortPrefs.timeOrder]);
+
+  const disableControls = showUnlockEmptyState && knownWords.length === 0;
 
   const listHeader = useMemo(
     () => (
@@ -338,9 +363,10 @@ export function RevisionKnownWordsList({
         showFlashcardHero={showFlashcardHero}
         onStartFlashcards={onStartFlashcards}
         searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        onOpenFilters={() => setSheetVisible(true)}
+        onSearchChange={disableControls ? () => {} : setSearchQuery}
+        onOpenFilters={disableControls ? () => {} : () => setSheetVisible(true)}
         activeFilterCount={activeFilterCount}
+        controlsDisabled={disableControls}
       />
     ),
     [
@@ -350,6 +376,7 @@ export function RevisionKnownWordsList({
       onStartFlashcards,
       searchQuery,
       activeFilterCount,
+      disableControls,
     ],
   );
 
@@ -364,19 +391,37 @@ export function RevisionKnownWordsList({
 
   const empty = useMemo(() => {
     if (knownWords.length === 0) {
+      if (showUnlockEmptyState) {
+        return (
+          <CenteredUnlockCtaCard
+            icon="lock-closed-outline"
+            title="Twoja biblioteka jest pusta"
+            body="Oznacz słowo jako „Known” w Daily Word, a pojawi się tutaj. Wtedy odblokujesz też tryby powtórek."
+            primaryLabel="Przejdź do Daily Word"
+            onPrimaryPress={onUnlockPrimaryPress ?? (() => {})}
+          />
+        );
+      }
       return <RevisionListEmpty hasSearch={false} />;
     }
     if (filteredWords.length === 0) {
       return (
         <View style={styles.searchEmpty}>
           <Text style={styles.searchEmptyText}>
-            {buildEmptyFilterHint(selectedLevels, searchQuery)}
+            {buildEmptyFilterHint(selectedTiers, searchQuery)}
           </Text>
         </View>
       );
     }
     return null;
-  }, [knownWords.length, filteredWords.length, searchQuery, selectedLevels]);
+  }, [
+    knownWords.length,
+    filteredWords.length,
+    searchQuery,
+    selectedTiers,
+    showUnlockEmptyState,
+    onUnlockPrimaryPress,
+  ]);
 
   return (
     <View style={styles.listScreen}>
@@ -403,7 +448,7 @@ export function RevisionKnownWordsList({
         onClose={() => setSheetVisible(false)}
         onApply={applyFilters}
         initialSortPrefs={sortPrefs}
-        initialSelectedLevels={selectedLevels}
+        initialSelectedTiers={selectedTiers}
         showLevelSections={knownWords.length > 0}
       />
     </View>

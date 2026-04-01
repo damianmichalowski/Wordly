@@ -1,19 +1,20 @@
-import type { UserProfile } from '@/src/types/profile';
 import type { WidgetActionType } from '@/src/types/widgets';
 
 type HomeLinkParams = {
   wordId?: string | null;
   stateVersion: number;
-  profile: UserProfile;
+  sourceLanguageCode?: string | null;
+  targetLanguageCode?: string | null;
+  displayLevel?: string | null;
 };
 
 const baseScheme = 'wordly://';
 
 export function buildHomeDeepLink(params: HomeLinkParams): string {
   const queryEntries = [
-    `source=${encodeURIComponent(params.profile.languagePair.sourceLanguage)}`,
-    `target=${encodeURIComponent(params.profile.languagePair.targetLanguage)}`,
-    `level=${encodeURIComponent(params.profile.displayLevel)}`,
+    `source=${encodeURIComponent(params.sourceLanguageCode ?? '')}`,
+    `target=${encodeURIComponent(params.targetLanguageCode ?? '')}`,
+    `level=${encodeURIComponent(params.displayLevel ?? '')}`,
     `stateVersion=${encodeURIComponent(String(params.stateVersion))}`,
   ];
   if (params.wordId) {

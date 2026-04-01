@@ -20,6 +20,7 @@ export async function syncWidgetLoadingSnapshot(): Promise<void> {
       wordId: null,
       sourceText: null,
       targetText: null,
+      targetTranslationLines: null,
       uiState: 'loading',
     };
     await WordlyWidgetBridge.setSnapshotJson(JSON.stringify(loading));

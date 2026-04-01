@@ -4,18 +4,20 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
-  ANDROID_RIPPLE_ICON_ROUND,
-  HIT_SLOP_COMFORT,
-  roundIconPressStyle,
+    ANDROID_RIPPLE_ICON_ROUND,
+    HIT_SLOP_COMFORT,
+    roundIconPressStyle,
 } from "@/src/components/ui/interaction";
 import {
-  StitchColors,
-  StitchFonts,
-  StitchRadius,
+    StitchColors,
+    StitchFonts,
+    StitchRadius,
 } from "@/src/theme/wordlyStitchTheme";
 
 export type ScreenHeaderProps = {
   title: string;
+  /** W jednym wierszu z tytułem, po prawej od słowa (np. badge CEFR). */
+  titleEndAccessory?: ReactNode;
   subtitle?: string;
   /** Element po prawej (np. badge poziomu). */
   rightAccessory?: ReactNode;
@@ -29,6 +31,7 @@ export type ScreenHeaderProps = {
  */
 export function ScreenHeader({
   title,
+  titleEndAccessory,
   subtitle,
   rightAccessory,
   onBackPress,
@@ -65,10 +68,24 @@ export function ScreenHeader({
             />
           </Pressable>
         ) : null}
-        <View style={[styles.titleBlock, onBackPress && styles.titleBlockWithBack]}>
-          <Text style={styles.title} numberOfLines={2}>
-            {title}
-          </Text>
+        <View
+          style={[styles.titleBlock, onBackPress && styles.titleBlockWithBack]}
+        >
+          {titleEndAccessory ? (
+            <View style={styles.titleRow}>
+              <Text
+                style={[styles.title, styles.titleShrink]}
+                numberOfLines={2}
+              >
+                {title}
+              </Text>
+              <View style={styles.titleEnd}>{titleEndAccessory}</View>
+            </View>
+          ) : (
+            <Text style={styles.title} numberOfLines={2}>
+              {title}
+            </Text>
+          )}
           {subtitle ? (
             <Text style={styles.subtitle} numberOfLines={2}>
               {subtitle}
@@ -114,6 +131,20 @@ const styles = StyleSheet.create({
   },
   titleBlockWithBack: {
     paddingLeft: 2,
+  },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    width: "100%",
+  },
+  titleShrink: {
+    flex: 1,
+    minWidth: 0,
+  },
+  titleEnd: {
+    flexShrink: 0,
+    alignSelf: "center",
   },
   title: {
     fontSize: 30,

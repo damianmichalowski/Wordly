@@ -1,14 +1,14 @@
-import { createAudioPlayer, setAudioModeAsync } from 'expo-audio';
-import * as Speech from 'expo-speech';
+import { createAudioPlayer, setAudioModeAsync } from "expo-audio";
+import * as Speech from "expo-speech";
 
-import type { LanguageCode } from '@/src/types/language';
-import type { VocabularyWord } from '@/src/types/words';
+import type { LanguageCode } from "@/src/types/language";
+import type { VocabularyWord } from "@/src/types/words";
 
 const languageToLocale: Record<LanguageCode, string> = {
-  pl: 'pl-PL',
-  en: 'en-US',
-  es: 'es-ES',
-  de: 'de-DE',
+  pl: "pl-PL",
+  en: "en-US",
+  es: "es-ES",
+  de: "de-DE",
 };
 
 type ManagedAudioPlayer = ReturnType<typeof createAudioPlayer>;
@@ -17,9 +17,12 @@ let activePlayer: ManagedAudioPlayer | null = null;
 let activePlaybackSubscription: { remove: () => void } | null = null;
 
 function getTtsText(word: VocabularyWord): string | undefined {
-  // Wymowa dotyczy słowa w języku nauki (lemat = sourceText), nie tłumaczenia (targetText).
-  const t = word.pronunciationText?.trim() || word.sourceText?.trim();
-  return t || undefined;
+  // expo-speech potrzebuje normalnej pisowni (lemma); IPA w `pronunciationText` tylko do UI.
+  const lemma = word.sourceText?.trim();
+  if (lemma) {
+    return lemma;
+  }
+  return word.pronunciationText?.trim() || undefined;
 }
 
 export function canPronounce(word: VocabularyWord | null | undefined) {
@@ -64,30 +67,33 @@ async function playPronunciationUrl(url: string): Promise<boolean> {
     const player = createAudioPlayer(url);
     activePlayer = player;
 
-    const subscription = player.addListener('playbackStatusUpdate', (status) => {
-      if (!status.isLoaded || activePlayer !== player) {
-        return;
-      }
-      if (status.didJustFinish) {
-        try {
-          subscription.remove();
-        } catch {
-          /* noop */
+    const subscription = player.addListener(
+      "playbackStatusUpdate",
+      (status) => {
+        if (!status.isLoaded || activePlayer !== player) {
+          return;
         }
-        if (activePlaybackSubscription === subscription) {
-          activePlaybackSubscription = null;
+        if (status.didJustFinish) {
+          try {
+            subscription.remove();
+          } catch {
+            /* noop */
+          }
+          if (activePlaybackSubscription === subscription) {
+            activePlaybackSubscription = null;
+          }
+          try {
+            player.pause();
+            player.remove();
+          } catch {
+            /* noop */
+          }
+          if (activePlayer === player) {
+            activePlayer = null;
+          }
         }
-        try {
-          player.pause();
-          player.remove();
-        } catch {
-          /* noop */
-        }
-        if (activePlayer === player) {
-          activePlayer = null;
-        }
-      }
-    });
+      },
+    );
     activePlaybackSubscription = subscription;
 
     player.play();
@@ -99,7 +105,7 @@ async function playPronunciationUrl(url: string): Promise<boolean> {
 }
 
 function speakTts(word: VocabularyWord, text: string): void {
-  const locale = languageToLocale[word.sourceLanguageCode] ?? 'en-US';
+  const locale = languageToLocale[word.sourceLanguageCode] ?? "en-US";
   Speech.stop();
   Speech.speak(text, {
     language: locale,
