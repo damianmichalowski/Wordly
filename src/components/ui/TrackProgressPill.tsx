@@ -221,15 +221,9 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     zIndex: 1,
-    ...Platform.select({
-      ios: {
-        backgroundColor: PlatformColor("systemGreen"),
-        opacity: 0.32,
-      },
-      default: {
-        backgroundColor: FILL_PROGRESS_FALLBACK,
-      },
-    }),
+    ...(Platform.OS === "ios"
+      ? { backgroundColor: PlatformColor("systemGreen"), opacity: 0.32 }
+      : { backgroundColor: FILL_PROGRESS_FALLBACK }),
   },
   glassGradient: {
     ...StyleSheet.absoluteFillObject,

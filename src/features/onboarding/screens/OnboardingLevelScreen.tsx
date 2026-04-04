@@ -5,10 +5,10 @@ import {
   useEffect,
   useMemo,
   useState,
-  type LayoutChangeEvent,
 } from "react";
 import {
   LayoutAnimation,
+  type LayoutChangeEvent,
   Platform,
   Pressable,
   ScrollView,
