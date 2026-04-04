@@ -61,7 +61,7 @@ Docker must be configured for nested containers. After installing Docker:
 
 ### Key caveats
 
-- The web target (`npm run web` or `npx expo start --web`) has a known `PlatformColor is not a function` error in `TrackProgressPill.tsx`. The app is designed primarily for iOS/Android.
+- The web target works after fixes to `TrackProgressPill.tsx` (PlatformColor guard) and `OnboardingLevelScreen.tsx` (LayoutChangeEvent import). The app is designed primarily for iOS/Android but the web target is usable for development testing.
 - Supabase's `seed.sql` is referenced in `config.toml` but does not exist in the repo — the `WARN: no files matched pattern: supabase/seed.sql` message during `supabase db reset` is expected. All seed data is applied via migrations.
 - No automated test suite (unit/integration) is configured in the repo. Testing is manual via device/simulator.
 - The app uses **social auth only** (Google/Apple) — there is no email/password UI. For local dev, create users via the Supabase admin API (see above). The app's `AppBootstrapProvider` treats missing Supabase env vars as "authenticated" for offline/mock development, but RPC calls will fail without a real session.
