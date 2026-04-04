@@ -1,83 +1,159 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DeviceEventEmitter } from "react-native";
-
-import { PROFILE_SETTINGS_SAVED } from "@/src/events/profileSettingsEvents";
-import { syncWidgetSnapshotFromApp } from "@/src/services/widgets/syncWidgetSnapshot";
+import type { QueryClient } from "@tanstack/react-query";
 import {
-    getDailyWordWithDetails,
-    markDailyWordAsKnown,
-} from "../services/dailyWord.service";
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import NetInfo from "@react-native-community/netinfo";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import type { AchievementEventPayload } from "@/src/features/achievements/types/achievementEvents.types";
+import {
+    getLearningOptionsProgress,
+    getLearningTrackProgress,
+} from "@/src/features/profile/services/learningProgress.service";
+import { createDailyWordCurrentQueryFn } from "@/src/lib/query/dailyWordCurrentQuery";
+import { invalidateAfterDailyWordMarkedKnown } from "@/src/lib/query/invalidateAfterMutations";
+import { queryKeys } from "@/src/lib/query/queryKeys";
+import { staleTimes } from "@/src/lib/query/staleTimes";
+import { syncWidgetSnapshotFromApp } from "@/src/services/widgets/syncWidgetSnapshot";
+import { getWordDetails } from "@/src/features/word-details/services/wordDetails.service";
+
+import { markDailyWordAsKnown } from "../services/dailyWord.service";
 import type { DailyWordResult } from "../types/dailyWord.types";
 
-type DailyWordState = {
-  isLoading: boolean;
-  isSaving: boolean;
-  /** Błąd pobrania, tylko flaga do UI; szczegóły wyłącznie w konsoli (__DEV__). */
-  loadFailed: boolean;
-  data: DailyWordResult | null;
+type DailyWordHookState = {
+  /** Ostatnie zdarzenia trofeów z `mark_word_known_and_advance_daily_word`. */
+  lastAchievementEvents: AchievementEventPayload[];
+  exhaustedAwaitingTrackCelebration: boolean;
+  /** Błąd zapisu „Known” — ten sam wyświetlany słowo, bez zmiany cache. */
+  markKnownInlineError: string | null;
 };
 
-const initialState: DailyWordState = {
-  isLoading: true,
-  isSaving: false,
-  loadFailed: false,
-  data: null,
+const initialHookState: DailyWordHookState = {
+  lastAchievementEvents: [],
+  exhaustedAwaitingTrackCelebration: false,
+  markKnownInlineError: null,
 };
+
+/** Home: `trackProgress`; Ustawienia (paski): `optionsProgress` — osobne RPC; zsynchronizuj oba. */
+async function refreshLearningCachesAfterMarkKnown(qc: QueryClient) {
+  await Promise.all([
+    qc.fetchQuery({
+      queryKey: queryKeys.learning.trackProgress,
+      queryFn: getLearningTrackProgress,
+      staleTime: 0,
+    }),
+    qc.fetchQuery({
+      queryKey: queryKeys.learning.optionsProgress,
+      queryFn: () => getLearningOptionsProgress().catch(() => null),
+      staleTime: 0,
+    }),
+  ]);
+}
 
 export type UseDailyWordOptions = {
-  /**
-   * Wywoływane po RPC, zanim ustawimy `data: null` przy wyczerpanym torze.
-   * Dzięki temu UI toru (np. `isTrackCompleted`) jest zsynchronizowane i nie miga „Brak słowa”.
-   */
   onTrackExhausted?: () => Promise<void>;
 };
 
 export function useDailyWord(options?: UseDailyWordOptions) {
-  const [state, setState] = useState<DailyWordState>(initialState);
-  /** Anuluje zakończone `refresh()` po `markKnown`, żeby nie nadpisywały stanu `loadFailed` przy wyczerpanym torze. */
-  const refreshAbortRef = useRef<AbortController | null>(null);
+  const queryClient = useQueryClient();
+  const [hookState, setHookState] =
+    useState<DailyWordHookState>(initialHookState);
+  /** Cały przebieg „Known” (RPC + dogranie następnego słowa) — nie tylko `mutation.isPending`. */
+  const [markKnownFlowPending, setMarkKnownFlowPending] = useState(false);
 
-  const refresh = useCallback(async () => {
-    refreshAbortRef.current?.abort();
-    const controller = new AbortController();
-    refreshAbortRef.current = controller;
-    setState((prev) => ({ ...prev, isLoading: true, loadFailed: false }));
-    try {
-      const data = await getDailyWordWithDetails();
-      if (controller.signal.aborted) {
+  const query = useQuery({
+    queryKey: queryKeys.dailyWord.current,
+    queryFn: createDailyWordCurrentQueryFn(queryClient),
+    staleTime: staleTimes.dailyWordCurrent,
+    /** Refetch errors: keep showing last good word instead of flashing the offline / error screen. */
+    placeholderData: keepPreviousData,
+  });
+
+  const queryRef = useRef(query);
+  queryRef.current = query;
+
+  const markKnownMutation = useMutation({
+    mutationFn: markDailyWordAsKnown,
+    networkMode: "always",
+    onError: (e) => {
+      if (__DEV__) {
+        console.warn("[wordly] useDailyWord markKnown failed", e);
+      }
+    },
+  });
+
+  /**
+   * Drives `refreshIfStale` / NetInfo recovery. Updated only explicitly (not from React state)
+   * so `finally` can clear it before the next paint — avoids false "reconnect recovery"
+   * when NetInfo emits while `setMarkKnownFlowPending(false)` is still queued.
+   */
+  const markKnownFlowPendingRef = useRef(false);
+  /**
+   * True only after we saw offline (while flow pending) or the mutation paused —
+   * avoids treating the normal “RPC done, still dograj next word” window as reconnect recovery.
+   */
+  const markKnownReconnectRecoveryEligibleRef = useRef(false);
+
+  useEffect(() => {
+    if (!markKnownFlowPending) {
+      return;
+    }
+    if (!markKnownMutation.isPaused) {
+      return;
+    }
+    markKnownReconnectRecoveryEligibleRef.current = true;
+  }, [markKnownFlowPending, markKnownMutation.isPaused]);
+
+  /**
+   * If the mutation was paused while offline and resumes online, or the flow flag
+   * desyncs from a stuck paused mutation, recover on real reconnect.
+   */
+  useEffect(() => {
+    const unsub = NetInfo.addEventListener((state) => {
+      const online = state.isConnected !== false;
+      if (!online) {
+        if (markKnownFlowPendingRef.current) {
+          markKnownReconnectRecoveryEligibleRef.current = true;
+        }
         return;
       }
-      setState({ isLoading: false, isSaving: false, loadFailed: false, data });
-      void syncWidgetSnapshotFromApp();
-    } catch (e) {
-      if (controller.signal.aborted) {
+      if (!markKnownFlowPendingRef.current) {
+        return;
+      }
+      if (markKnownMutation.isPending || markKnownMutation.isPaused) {
+        return;
+      }
+      if (!markKnownReconnectRecoveryEligibleRef.current) {
         return;
       }
       if (__DEV__) {
-        console.warn("[wordly] useDailyWord refresh failed", e);
+        console.warn(
+          "[wordly] daily_word_mark_known reconnect recovery: stale pending flag cleared",
+        );
       }
-      setState({
-        isLoading: false,
-        isSaving: false,
-        loadFailed: true,
-        data: null,
-      });
-      void syncWidgetSnapshotFromApp();
-    }
-  }, []);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  useEffect(() => {
-    const sub = DeviceEventEmitter.addListener(PROFILE_SETTINGS_SAVED, () => {
-      void refresh();
+      markKnownReconnectRecoveryEligibleRef.current = false;
+      markKnownMutation.reset();
+      markKnownFlowPendingRef.current = false;
+      setMarkKnownFlowPending(false);
+      setHookState((prev) => ({
+        ...prev,
+        markKnownInlineError:
+          prev.markKnownInlineError ??
+          "Połączeniu przywrócono. Spróbuj ponownie.",
+      }));
     });
-    return () => sub.remove();
-  }, [refresh]);
+    return () => unsub();
+  }, [markKnownMutation]);
 
-  const wordId = state.data?.details.word_id ?? null;
+  const wordId = query.data?.details.word_id ?? null;
+
+  /** Stale cache może mieć `data === null` — wtedy `data === undefined` jest fałszywym rozróżnieniem od błędu sieci. */
+  const hasDisplayableDailyWord = Boolean(
+    query.data?.assignment && query.data?.details,
+  );
 
   const markKnown = useCallback(async (): Promise<
     "exhausted" | "next" | "skipped"
@@ -85,60 +161,148 @@ export function useDailyWord(options?: UseDailyWordOptions) {
     if (!wordId) {
       return "skipped";
     }
-    refreshAbortRef.current?.abort();
-    setState((prev) => ({ ...prev, isSaving: true, loadFailed: false }));
+    markKnownReconnectRecoveryEligibleRef.current = false;
+    markKnownFlowPendingRef.current = true;
+    setMarkKnownFlowPending(true);
+    setHookState((prev) => ({ ...prev, markKnownInlineError: null }));
+    if (__DEV__) {
+      console.log("[wordly] daily_word_mark_known flow started", { wordId });
+    }
     try {
-      const nextAssignment = await markDailyWordAsKnown(wordId);
+      const { assignment: nextAssignment, achievementEvents } =
+        await markKnownMutation.mutateAsync(wordId);
+      markKnownReconnectRecoveryEligibleRef.current = false;
 
-      // The RPC already advanced the daily word for today.
-      // If nothing is returned, it means no candidate words left.
       if (!nextAssignment) {
-        refreshAbortRef.current?.abort();
+        queryClient.setQueryData(queryKeys.dailyWord.current, null);
+        setHookState((prev) => ({
+          ...prev,
+          lastAchievementEvents: achievementEvents,
+          exhaustedAwaitingTrackCelebration: true,
+          markKnownInlineError: null,
+        }));
+        invalidateAfterDailyWordMarkedKnown(queryClient);
+        await refreshLearningCachesAfterMarkKnown(queryClient);
         try {
           await options?.onTrackExhausted?.();
         } catch {
-          // Postęp toru jest best-effort; i tak czyścimy dzienne słowo.
+          // Postęp toru jest best-effort.
         }
-        setState({
-          isLoading: false,
-          isSaving: false,
-          loadFailed: false,
-          data: null,
-        });
         void syncWidgetSnapshotFromApp();
         return "exhausted";
       }
 
-      // Fetch the current daily word after advancing.
-      const data = await getDailyWordWithDetails();
-      refreshAbortRef.current?.abort();
-      setState({ isLoading: false, isSaving: false, loadFailed: false, data });
+      const details = await getWordDetails(nextAssignment.word_id);
+      queryClient.setQueryData(
+        queryKeys.words.detail(nextAssignment.word_id),
+        details,
+      );
+      const data: DailyWordResult = { assignment: nextAssignment, details };
+      queryClient.setQueryData(queryKeys.dailyWord.current, data);
+      setHookState((prev) => ({
+        ...prev,
+        lastAchievementEvents: achievementEvents,
+        exhaustedAwaitingTrackCelebration: false,
+        markKnownInlineError: null,
+      }));
+      invalidateAfterDailyWordMarkedKnown(queryClient);
+      await refreshLearningCachesAfterMarkKnown(queryClient);
       void syncWidgetSnapshotFromApp();
       return "next";
     } catch (e) {
       if (__DEV__) {
-        console.warn("[wordly] useDailyWord markKnown failed", e);
+        console.warn("[wordly] daily_word_mark_known flow failed (network or RPC)", e);
       }
-      setState((prev) => ({
+      setHookState((prev) => ({
         ...prev,
-        isSaving: false,
+        markKnownInlineError:
+          "Nie udało się zapisać. Spróbuj ponownie.",
       }));
       return "skipped";
+    } finally {
+      if (__DEV__) {
+        console.log("[wordly] daily_word_mark_known flow pending cleared");
+      }
+      markKnownReconnectRecoveryEligibleRef.current = false;
+      markKnownFlowPendingRef.current = false;
+      setMarkKnownFlowPending(false);
     }
-  }, [options?.onTrackExhausted, wordId]);
+  }, [markKnownMutation, options, queryClient, wordId]);
 
   const canAct = useMemo(
-    () => Boolean(state.data?.details?.word_id) && !state.isSaving,
-    [state.data?.details?.word_id, state.isSaving],
+    () =>
+      Boolean(query.data?.details?.word_id) && !markKnownFlowPending,
+    [markKnownFlowPending, query.data?.details?.word_id],
   );
 
+  const clearLastAchievementEvents = useCallback(() => {
+    setHookState((prev) => ({
+      ...prev,
+      lastAchievementEvents: [],
+    }));
+  }, []);
+
+  const dismissLastAchievementEvent = useCallback((eventId: string) => {
+    setHookState((prev) => ({
+      ...prev,
+      lastAchievementEvents: prev.lastAchievementEvents.filter(
+        (e) => e.eventId !== eventId,
+      ),
+    }));
+  }, []);
+
+  const clearExhaustedAwaitingTrackCelebration = useCallback(() => {
+    setHookState((prev) => ({
+      ...prev,
+      exhaustedAwaitingTrackCelebration: false,
+    }));
+  }, []);
+
+  const refresh = useCallback(async () => {
+    await query.refetch();
+    void syncWidgetSnapshotFromApp();
+  }, [query]);
+
+  const refreshIfStale = useCallback(() => {
+    /** Avoid racing tab-focus refetch with in-flight mark-known (RPC + next word fetch). */
+    if (markKnownFlowPendingRef.current) {
+      return;
+    }
+    const q = queryRef.current;
+    if (q.isStale && !q.isFetching) {
+      void q.refetch();
+    }
+  }, []);
+
   return {
-    isLoading: state.isLoading,
-    isSaving: state.isSaving,
-    loadFailed: state.loadFailed,
-    data: state.data,
+    /** Pełny loader tylko do pierwszego ustalonego fetchu; refetch w tle nie zasłania UI. */
+    isLoading: !query.isFetched && !query.isError,
+    isSaving: markKnownFlowPending,
+    /**
+     * Błąd pobrania gdy nie ma sensownej treści w cache (w tym: sukces „brak słowa” + padnięty refetch
+     * z `keepPreviousData` — `data === null` musi zostać potraktowane jak brak cache do wyświetlenia).
+     */
+    loadFailed: query.isError && !hasDisplayableDailyWord,
+    /**
+     * Wyłącznie po udanym RPC: brak przypisania na dziś / pusty tor — nie mylić z błędem sieci.
+     */
+    confirmedNoDailyWord: query.isSuccess && query.data === null,
+    /**
+     * Refetch / pierwszy fetch bez wyświetlanej karty — spinner na CTA (błąd, „stuck” loading, retry).
+     */
+    transportFetchBusy:
+      !hasDisplayableDailyWord && query.isFetching,
+    data: query.data ?? null,
+    lastAchievementEvents: hookState.lastAchievementEvents,
+    exhaustedAwaitingTrackCelebration:
+      hookState.exhaustedAwaitingTrackCelebration,
+    markKnownInlineError: hookState.markKnownInlineError,
+    clearLastAchievementEvents,
+    dismissLastAchievementEvent,
+    clearExhaustedAwaitingTrackCelebration,
     canAct,
     refresh,
+    refreshIfStale,
     markKnown,
   };
 }

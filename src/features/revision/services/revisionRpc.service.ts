@@ -1,6 +1,10 @@
+import { completeDailyReviewSessionRpc } from "@/src/features/achievements/services/achievements.service";
+import type { CompleteDailyReviewSessionResult } from "@/src/features/achievements/types/achievementEvents.types";
 import { rpc } from "@/src/lib/supabase/rpc";
 
 import type { WordDetails } from "@/src/features/word-details/types/wordDetails.types";
+
+export type { CompleteDailyReviewSessionResult };
 
 export type RevisionHubStats = {
   dailyRevision: {
@@ -41,14 +45,10 @@ export async function getDailyReviewWords(): Promise<WordDetails[]> {
   return (data ?? []) as WordDetails[];
 }
 
-export async function completeDailyReviewSession(wordIds: string[]) {
-  const { data, error } = await rpc("complete_daily_review_session", {
-    p_word_ids: wordIds,
-  });
-  if (error) {
-    throw new Error(`Failed to complete daily review: ${error.message}`);
-  }
-  return data as { success: boolean; updatedCount: number };
+export async function completeDailyReviewSession(
+  wordIds: string[],
+): Promise<CompleteDailyReviewSessionResult> {
+  return completeDailyReviewSessionRpc(wordIds);
 }
 
 export async function getQuickPracticeWords(limit: 5 | 10 | 20): Promise<WordDetails[]> {

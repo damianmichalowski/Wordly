@@ -28,6 +28,9 @@ Generated as part of architecture review. **Behavior-preserving** cleanups prefe
 | `app/(tabs)/revision.tsx` | thin route | Logic split into `src/features/revision/components/*`. |
 | ~~`scripts/.../applySqlChunks.ts`~~ | — | Usunięte wraz ze starym pipeline seedów. |
 | `src/services/api/vocabularyApi.ts` | ~214 | Acceptable; could split query vs mapping later. |
+| `useRevisionHubSession` | orchestrator | Split helpers: `revisionHubSessionDerived.ts`, `revisionSessionWordMap.ts`, `revisionSessionCompletionCache.ts` (see `docs/SCREEN_STATE_ARCHITECTURE.md`). |
+
+The old combined `useRevision` (hub + library) was removed; Library uses `useLibraryScreenData` only.
 
 ### Folder structure
 
@@ -50,7 +53,7 @@ Generated as part of architecture review. **Behavior-preserving** cleanups prefe
 
 ### React Native / performance
 
-- **`RevisionKnownWordsList`:** stable `keyExtractor` / `renderItem`, `memo` na wierszu, statyczny `ListEmptyComponent`, `useMemo` na nagłówku — mniej niepotrzebnych rerenderów listy.
+- **`KnownWordsList` (Library):** stable `keyExtractor` / `renderItem`, `memo` na wierszu, statyczny `ListEmptyComponent`, `useMemo` na nagłówku — mniej niepotrzebnych rerenderów listy.
 - Image/assets: not audited in depth.
 
 ### State / navigation
@@ -105,8 +108,8 @@ src/
 
 1. **Done in PHASE 6 step 1:** Remove dead template files (`EditScreenInfo`, `StyledText`, `ExternalLink`).
 2. **Done in PHASE 6 step 2:** Shared `SelectionChip` in `src/components/ui/SelectionChip.tsx` — used by `language-pair` and `settings`.
-3. **Done in PHASE 6 step 3:** Split `revision.tsx` — `RevisionFlashcardMode`, `RevisionKnownWordsList`, `RevisionWordDetailModal` + `revisionScreenStyles.ts` under `src/features/revision/`.
-4. **Done in PHASE 6 step 4:** `FlatList` w `RevisionKnownWordsList` — `useCallback` / `useMemo`, `memo` na wierszu, stabilny pusty stan.
+3. **Done in PHASE 6 step 3:** Split `revision.tsx` — `RevisionFlashcardMode`, list UI (later `KnownWordsList` w Library), `RevisionWordDetailModal` + `revisionScreenStyles.ts` under `src/features/revision/`.
+4. **Done in PHASE 6 step 4:** `FlatList` w liście znanych słów — `useCallback` / `useMemo`, `memo` na wierszu, stabilny pusty stan.
 5. Add **`eslint-plugin-unused-imports`** or run knip/ts-prune in CI — **needs confirmation** (new devDependency).
 6. **Done in PHASE 6 step 5:** `CenteredMessageCta` dla bloku „brak profilu / onboarding” na `home`, `settings`, `revision` (warianty stylów 1:1 z poprzednich ekranów).
 7. **Database:** add migration only if schema gaps found — none identified as blocking in this audit.

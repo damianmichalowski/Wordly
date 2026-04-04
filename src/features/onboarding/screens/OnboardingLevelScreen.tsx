@@ -1,14 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type LayoutChangeEvent,
-} from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   LayoutAnimation,
+  type LayoutChangeEvent,
   Platform,
   Pressable,
   ScrollView,
@@ -39,6 +34,7 @@ import type {
   OnboardingOptions,
 } from "@/src/features/profile/types/profile.types";
 import { StitchColors, StitchFonts, StitchRadius } from "@/src/theme/wordlyStitchTheme";
+import { logUserAction } from "@/src/utils/userActionLog";
 
 export default function OnboardingLevelScreen() {
   const router = useRouter();
@@ -231,9 +227,13 @@ export default function OnboardingLevelScreen() {
                           barFill={0}
                           width={modeTileWidth}
                           showLearningProgress={false}
-                          onPress={() =>
-                            setLearningLevel(lvl.value as LearningLevel)
-                          }
+                          onPress={() => {
+                            logUserAction("tile_press", {
+                              target: "onboarding_learning_level",
+                              level: String(lvl.value),
+                            });
+                            setLearningLevel(lvl.value as LearningLevel);
+                          }}
                         />
                       );
                     })
@@ -255,7 +255,13 @@ export default function OnboardingLevelScreen() {
                           barFill={0}
                           width={modeTileWidth}
                           showLearningProgress={false}
-                          onPress={() => setSelectedCategoryId(cat.id)}
+                          onPress={() => {
+                            logUserAction("tile_press", {
+                              target: "onboarding_learning_category",
+                              categoryId: cat.id,
+                            });
+                            setSelectedCategoryId(cat.id);
+                          }}
                         />
                       );
                     })}
@@ -275,7 +281,12 @@ export default function OnboardingLevelScreen() {
             !canContinue && styles.primaryButtonDisabled,
             primarySolidPressStyle(pressed, !canContinue),
           ]}
-          onPress={() => router.push("/(onboarding)/widget")}
+          onPress={() => {
+            logUserAction("button_press", {
+              target: "onboarding_continue_to_widget",
+            });
+            router.push("/(onboarding)/widget");
+          }}
           disabled={!canContinue}
         >
           <Text style={styles.primaryButtonText}>Dalej</Text>

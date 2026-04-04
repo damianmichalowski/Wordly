@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
+import { useIsFocused } from "@react-navigation/native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useFocusEffect } from "@react-navigation/native";
 import {
   useCallback,
   useEffect,
@@ -25,10 +25,15 @@ import {
   type LayoutChangeEvent,
 } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 import { ScreenHeader } from "@/src/components/layout/ScreenHeader";
 import { CenteredMessageCta } from "@/src/components/ui/CenteredMessageCta";
+import { TransportRetryMessage } from "@/src/components/ui/TransportRetryMessage";
+import { SettingsScreenSkeleton } from "@/src/features/settings/components/SettingsScreenSkeleton";
 import {
   ANDROID_RIPPLE_PRIMARY,
   ANDROID_RIPPLE_SURFACE,
@@ -41,14 +46,27 @@ import { TrackModeTile } from "@/src/components/ui/TrackModeTile";
 import { WidgetHomePreviewCard } from "@/src/components/ui/WidgetHomePreviewCard";
 import { translationLinesForWidget } from "@/src/services/widgets/widgetSurfaceService";
 import type { LearningModeType } from "@/src/features/profile/types/profile.types";
-import { useDailyWord } from "@/src/features/daily-word/hooks/useDailyWord";
+import {
+  AchievementDetailModal,
+  AllTrophiesSheet,
+  SettingsAchievementsSection,
+  useUserAchievementsList,
+  type UserAchievementRow,
+} from "@/src/features/achievements";
+import { useDailyWordReadOnlyPreview } from "@/src/features/daily-word/hooks/useDailyWordReadOnlyPreview";
+import { useUserProfileSummaryQuery } from "@/src/features/profile/hooks/useUserProfileSummaryQuery";
 import { getAccountEmailOrName } from "@/src/features/profile/services/profileAccount.service";
 import { LanguageFlagBadge } from "@/src/features/settings/components/LanguageFlagBadge";
 import { getLearningLevelShortDescription } from "@/src/features/settings/learningLevelCopy";
-import { useSettings } from "@/src/features/settings/useSettings";
+import { useSettingsScreenData } from "@/src/features/settings/hooks/useSettingsScreenData";
 import { useAppBootstrap } from "@/src/hooks/useAppBootstrap";
+import {
+  SESSION_FLASHCARD_STUCK_MS,
+  useStuckLoading,
+} from "@/src/hooks/useStuckLoading";
 import { hasSupabaseEnv } from "@/src/lib/supabase/client";
 import { signOutApp } from "@/src/services/auth/socialAuth";
+import { logUserAction } from "@/src/utils/userActionLog";
 import { clearOnboardingCompletionFlag } from "@/src/services/storage/onboardingStorage";
 import {
   StitchColors,
@@ -150,6 +168,7 @@ function StitchSettingsRow({
 }
 
 export default function SettingsScreen() {
+  const isFocused = useIsFocused();
   const router = useRouter();
   const { focus: focusParam } = useLocalSearchParams<{
     focus?: string | string[];
@@ -165,9 +184,16 @@ export default function SettingsScreen() {
   const [learningModeSectionY, setLearningModeSectionY] = useState<
     number | null
   >(null);
+  const [achievementsSectionY, setAchievementsSectionY] = useState<
+    number | null
+  >(null);
 
   const onLearningModeSectionLayout = useCallback((e: LayoutChangeEvent) => {
     setLearningModeSectionY(e.nativeEvent.layout.y);
+  }, []);
+
+  const onAchievementsSectionLayout = useCallback((e: LayoutChangeEvent) => {
+    setAchievementsSectionY(e.nativeEvent.layout.y);
   }, []);
 
   const insets = useSafeAreaInsets();
@@ -176,7 +202,10 @@ export default function SettingsScreen() {
   const widgetSquareSize = Math.min(240, Math.max(160, windowWidth - 104));
   const { markOnboardingIncomplete } = useAppBootstrap();
   const {
+    viewKind,
     isLoading,
+    blockingLoadError,
+    blockingRetryBusy,
     isSaving,
     options,
     optionsProgress,
@@ -197,13 +226,43 @@ export default function SettingsScreen() {
     setSelectedCategoryId,
     save,
     refresh,
-  } = useSettings();
+  } = useSettingsScreenData();
 
-  useFocusEffect(
-    useCallback(() => {
-      void refresh();
-    }, [refresh]),
+  /** Kolejna próba „Spróbuj ponownie” — resetuje timer „stuck” i wraca do skeletonu. */
+  const [settingsLoadAttempt, setSettingsLoadAttempt] = useState(0);
+  const settingsLoadActive = isLoading && !blockingLoadError;
+  const stuckSettingsLoad = useStuckLoading(
+    settingsLoadActive,
+    SESSION_FLASHCARD_STUCK_MS,
+    settingsLoadAttempt,
   );
+
+  useEffect(() => {
+    if (!settingsLoadActive) {
+      setSettingsLoadAttempt(0);
+    }
+  }, [settingsLoadActive]);
+
+  /**
+   * Profil / trofea / podgląd słowa dnia: `useUserProfileSummaryQuery`,
+   * `useUserAchievementsList`, `useDailyWordReadOnlyPreview` robią fetch przy
+   * `settingsDataActive` (fokus). Osobny `refetchQueries` na focus dublował te RPC.
+   */
+
+  const supabaseConfigured = hasSupabaseEnv();
+  const settingsDataActive = supabaseConfigured && isFocused;
+  const { data: profileSummary } =
+    useUserProfileSummaryQuery(settingsDataActive);
+  const {
+    rows: achievementRows,
+    hasLoadError: achievementsHasLoadError,
+    isInitialLoading: achievementsInitialLoading,
+    retryBusy: achievementsRetryBusy,
+    reload: reloadAchievements,
+  } = useUserAchievementsList(settingsDataActive);
+  const [achievementDetailRow, setAchievementDetailRow] =
+    useState<UserAchievementRow | null>(null);
+  const [allTrophiesOpen, setAllTrophiesOpen] = useState(false);
 
   useEffect(() => {
     if (focus !== "learningMode") return;
@@ -221,7 +280,24 @@ export default function SettingsScreen() {
     return () => cancelAnimationFrame(id);
   }, [focus, isLoading, settings, learningModeSectionY, router]);
 
-  const { data: dailyWord } = useDailyWord();
+  useEffect(() => {
+    if (focus !== "achievements") return;
+    if (isLoading || !settings) return;
+    if (achievementsSectionY == null) return;
+    const id = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        settingsMainScrollRef.current?.scrollTo({
+          y: Math.max(0, achievementsSectionY - 16),
+          animated: true,
+        });
+        router.setParams({ focus: undefined });
+      });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [focus, isLoading, settings, achievementsSectionY, router]);
+
+  const { data: previewDetails } =
+    useDailyWordReadOnlyPreview(settingsDataActive);
   const [picker, setPicker] = useState<PickerKey>(null);
   const [accountEmail, setAccountEmail] = useState<string | null>(null);
   /** Rzeczywista szerokość siatki, dokładnie 2 kolumny: (szerokość − gap) / 2. */
@@ -353,7 +429,16 @@ export default function SettingsScreen() {
     }
   }, []);
 
-  const closePicker = useCallback(() => setPicker(null), []);
+  const dismissLanguagePicker = useCallback(
+    (reason: "backdrop" | "done" | "system") => {
+      logUserAction("button_press", {
+        target: "settings_language_picker_dismiss",
+        reason,
+      });
+      setPicker(null);
+    },
+    [],
+  );
 
   const pickerModal = useMemo(() => {
     if (!picker || !options) {
@@ -368,9 +453,12 @@ export default function SettingsScreen() {
         visible
         animationType="fade"
         transparent
-        onRequestClose={closePicker}
+        onRequestClose={() => dismissLanguagePicker("system")}
       >
-        <Pressable style={styles.modalBackdrop} onPress={closePicker}>
+        <Pressable
+          style={styles.modalBackdrop}
+          onPress={() => dismissLanguagePicker("backdrop")}
+        >
           <Pressable
             style={styles.modalCard}
             onPress={(e) => e.stopPropagation()}
@@ -406,11 +494,19 @@ export default function SettingsScreen() {
                       pressed && !chipDisabled && styles.modalLanguageRowPressed,
                       chipDisabled && styles.prefRowDisabled,
                     ]}
-                    onPress={() =>
-                      picker === "nativeLanguage"
-                        ? setNativeLanguageId(item.id)
-                        : setLearningLanguageId(item.id)
-                    }
+                    onPress={() => {
+                      logUserAction("button_press", {
+                        target: "settings_language_select",
+                        which:
+                          picker === "nativeLanguage" ? "native" : "learning",
+                        languageId: item.id,
+                      });
+                      if (picker === "nativeLanguage") {
+                        setNativeLanguageId(item.id);
+                      } else {
+                        setLearningLanguageId(item.id);
+                      }
+                    }}
                     accessibilityRole="button"
                     accessibilityState={{ selected, disabled: chipDisabled }}
                     accessibilityLabel={`${item.name}, ${item.code.toUpperCase()}`}
@@ -443,7 +539,7 @@ export default function SettingsScreen() {
                 styles.modalDone,
                 linkPressStyle(pressed, false),
               ]}
-              onPress={closePicker}
+              onPress={() => dismissLanguagePicker("done")}
             >
               <Text style={styles.modalDoneText}>Gotowe</Text>
             </Pressable>
@@ -454,7 +550,7 @@ export default function SettingsScreen() {
   }, [
     picker,
     options,
-    closePicker,
+    dismissLanguagePicker,
     nativeLanguageId,
     learningLanguageId,
     chipDisabled,
@@ -466,39 +562,60 @@ export default function SettingsScreen() {
   ]);
 
   const widgetPreview = useMemo(() => {
-    const word = dailyWord?.details.lemma ?? "Hello";
-    const translations = translationLinesForWidget(dailyWord?.details.senses);
+    const word = previewDetails?.lemma ?? "Hello";
+    const translations = translationLinesForWidget(previewDetails?.senses);
     return {
       word,
       translations:
         translations.length > 0 ? translations : ["cześć"],
     };
-  }, [dailyWord?.details.lemma, dailyWord?.details.senses]);
+  }, [previewDetails?.lemma, previewDetails?.senses]);
 
-  if (isLoading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="small" color={StitchColors.primary} />
-      </View>
-    );
-  }
-
-  if (!settings) {
-    return (
-      <CenteredMessageCta
-        variant="settings"
-        title="Onboarding required"
-        subtitle="Complete onboarding to manage your settings."
-        primaryLabel="Go to onboarding"
-        onPrimaryPress={() => router.replace("/(onboarding)")}
-      />
-    );
+  switch (viewKind) {
+    case "blocking_load_error":
+      return (
+        <View style={styles.screen}>
+          <ScreenHeader title="Ustawienia" />
+          <TransportRetryMessage
+            variant="screen"
+            isRetrying={blockingRetryBusy}
+            onRetry={() => {
+              logUserAction("button_press", {
+                target: "settings_blocking_load_retry",
+              });
+              void refresh();
+            }}
+          />
+        </View>
+      );
+    case "onboarding_required":
+      return (
+        <SafeAreaView
+          style={{ flex: 1, backgroundColor: StitchColors.surface }}
+          edges={["top", "bottom"]}
+        >
+          <CenteredMessageCta
+            variant="settings"
+            title="Onboarding required"
+            subtitle="Complete onboarding to manage your settings."
+            primaryLabel="Go to onboarding"
+            onPrimaryPress={() => router.replace("/(onboarding)")}
+          />
+        </SafeAreaView>
+      );
+    case "main":
+      break;
   }
 
   const displayName = accountEmail ?? "Wordly learner";
-  const since = formatSince(settings.created_at);
+  const since = settings ? formatSince(settings.created_at) : "";
+  const memberSinceIso = profileSummary?.memberSince?.trim();
+  const sinceForLine =
+    memberSinceIso && memberSinceIso.length > 0
+      ? formatSince(memberSinceIso)
+      : since;
   const profileSinceLine =
-    since.length > 0 ? `W aplikacji od ${since}` : "";
+    sinceForLine.length > 0 ? `W aplikacji od ${sinceForLine}` : "";
 
   return (
     <View style={styles.screen}>
@@ -519,6 +636,24 @@ export default function SettingsScreen() {
           { paddingBottom: 28 + insets.bottom },
         ]}
       >
+        {isLoading ? (
+          stuckSettingsLoad ? (
+            <TransportRetryMessage
+              variant="embedded"
+              isRetrying={false}
+              onRetry={() => {
+                logUserAction("button_press", {
+                  target: "settings_stuck_initial_load_retry",
+                });
+                setSettingsLoadAttempt((n) => n + 1);
+                void refresh();
+              }}
+            />
+          ) : (
+            <SettingsScreenSkeleton />
+          )
+        ) : (
+          <>
         <View style={styles.profileCard}>
           <View style={styles.avatarWrap}>
             <View style={styles.avatarCircle}>
@@ -531,13 +666,90 @@ export default function SettingsScreen() {
               </Text>
             </View>
           </View>
-          <View style={styles.profileTextCol}>
+          <View style={styles.profileBody}>
             <Text style={styles.profileName}>{displayName}</Text>
             {profileSinceLine ? (
               <Text style={styles.profileSubtitle}>{profileSinceLine}</Text>
             ) : null}
+            {profileSummary != null && hasSupabaseEnv() ? (
+              <View
+                style={styles.profileStatChips}
+                accessibilityLabel={`Seria Daily Review ${profileSummary.currentDailyReviewStreak} dni, rekord ${profileSummary.longestDailyReviewStreak}, ${profileSummary.knownWordsCount} znanych słów`}
+              >
+                <View style={styles.profileChipStreak}>
+                  <View style={styles.profileChipStreakMain}>
+                    <Ionicons
+                      name="flame"
+                      size={18}
+                      color="#D32F2F"
+                      accessibilityElementsHidden
+                    />
+                    <Text style={styles.profileChipStreakValue}>
+                      {profileSummary.currentDailyReviewStreak}
+                    </Text>
+                    <Text style={styles.profileChipStreakDni}>dni</Text>
+                  </View>
+                  <Text style={styles.profileChipStreakRekord}>
+                    Rekord{" "}
+                    {profileSummary.longestDailyReviewStreak}{" "}
+                    {profileSummary.longestDailyReviewStreak === 1
+                      ? "dzień"
+                      : "dni"}
+                  </Text>
+                </View>
+                <View style={styles.profileChipWords}>
+                  <View style={styles.profileChipWordsMain}>
+                    <Ionicons
+                      name="library-outline"
+                      size={18}
+                      color={StitchColors.primary}
+                    />
+                    <Text style={styles.profileChipWordsValue}>
+                      {profileSummary.knownWordsCount}
+                    </Text>
+                  </View>
+                  <Text style={styles.profileChipWordsLabel}>
+                    {profileSummary.knownWordsCount === 1
+                      ? "znane słowo"
+                      : profileSummary.knownWordsCount >= 2 &&
+                          profileSummary.knownWordsCount <= 4
+                        ? "znane słowa"
+                        : "znanych słów"}
+                  </Text>
+                </View>
+              </View>
+            ) : null}
+            {profileSummary?.email &&
+            profileSummary.email.trim() !== displayName.trim() ? (
+              <Text style={styles.profileEmailLine} numberOfLines={2}>
+                {profileSummary.email}
+              </Text>
+            ) : null}
           </View>
         </View>
+
+        {supabaseConfigured ? (
+          <View
+            collapsable={false}
+            onLayout={onAchievementsSectionLayout}
+          >
+            <SettingsAchievementsSection
+              rows={achievementRows}
+              hasLoadError={achievementsHasLoadError}
+              isInitialLoading={achievementsInitialLoading}
+              retryBusy={achievementsRetryBusy}
+              onRetryLoad={
+                achievementsHasLoadError
+                  ? () => {
+                      void reloadAchievements();
+                    }
+                  : undefined
+              }
+              onTrophyPress={setAchievementDetailRow}
+              onSeeAll={() => setAllTrophiesOpen(true)}
+            />
+          </View>
+        ) : null}
 
         <Text style={styles.sectionHeading}>Preferencje nauki</Text>
         <View style={styles.listGroupOuter}>
@@ -548,7 +760,13 @@ export default function SettingsScreen() {
               subtitle="Tłumaczenia i interfejs"
               value={nativeName}
               disabled={chipDisabled}
-              onPress={() => setPicker("nativeLanguage")}
+              onPress={() => {
+                logUserAction("button_press", {
+                  target: "settings_open_language_picker",
+                  which: "native",
+                });
+                setPicker("nativeLanguage");
+              }}
             />
             <StitchSettingsRow
               icon="book-outline"
@@ -556,7 +774,13 @@ export default function SettingsScreen() {
               subtitle="Język, którego się uczysz"
               value={learningName}
               disabled={chipDisabled}
-              onPress={() => setPicker("learningLanguage")}
+              onPress={() => {
+                logUserAction("button_press", {
+                  target: "settings_open_language_picker",
+                  which: "learning",
+                });
+                setPicker("learningLanguage");
+              }}
             />
           </View>
         </View>
@@ -617,7 +841,13 @@ export default function SettingsScreen() {
                           pct={pct}
                           barFill={barFill}
                           width={modeTileWidth}
-                          onPress={() => setLearningLevel(lvl.value as any)}
+                          onPress={() => {
+                            logUserAction("tile_press", {
+                              target: "settings_learning_level",
+                              level: String(lvl.value),
+                            });
+                            setLearningLevel(lvl.value as any);
+                          }}
                         />
                       );
                     })
@@ -647,7 +877,13 @@ export default function SettingsScreen() {
                           pct={pct}
                           barFill={barFill}
                           width={modeTileWidth}
-                          onPress={() => setSelectedCategoryId(cat.id)}
+                          onPress={() => {
+                            logUserAction("tile_press", {
+                              target: "settings_learning_category",
+                              categoryId: cat.id,
+                            });
+                            setSelectedCategoryId(cat.id);
+                          }}
                         />
                       );
                     })}
@@ -665,7 +901,10 @@ export default function SettingsScreen() {
             (!canSave || isSaving) && styles.buttonDisabled,
             primarySolidPressStyle(pressed, !canSave || isSaving),
           ]}
-          onPress={save}
+          onPress={() => {
+            logUserAction("button_press", { target: "settings_save" });
+            void save();
+          }}
           disabled={!canSave || isSaving}
         >
           {isSaving ? (
@@ -748,6 +987,7 @@ export default function SettingsScreen() {
               ]}
               disabled={chipDisabled}
               onPress={() => {
+                logUserAction("button_press", { target: "settings_sign_out_prompt" });
                 Alert.alert(
                   "Wyloguj się",
                   "Zakończysz sesję na tym urządzeniu. Profil lokalny zostanie zachowany. Po ponownym logowaniu odzyskasz postęp.",
@@ -757,6 +997,7 @@ export default function SettingsScreen() {
                       text: "Wyloguj",
                       style: "destructive",
                       onPress: () => {
+                        logUserAction("button_press", { target: "settings_sign_out_confirm" });
                         void (async () => {
                           await signOutApp();
                           router.replace("/(onboarding)");
@@ -782,12 +1023,15 @@ export default function SettingsScreen() {
               styles.accountRow,
               pressed && styles.accountRowPressed,
             ]}
-            onPress={() =>
+            onPress={() => {
+              logUserAction("button_press", {
+                target: "settings_delete_account_prompt",
+              });
               Alert.alert(
                 "Delete account",
                 "Account deletion is not available in the app yet. Contact support if you need to remove your data.",
-              )
-            }
+              );
+            }}
           >
             <View style={styles.accountRowLeft}>
               <Ionicons
@@ -816,6 +1060,9 @@ export default function SettingsScreen() {
                     {
                       text: "Reset",
                       onPress: () => {
+                        logUserAction("button_press", {
+                          target: "settings_dev_reset_onboarding",
+                        });
                         void (async () => {
                           await clearOnboardingCompletionFlag();
                           markOnboardingIncomplete();
@@ -831,7 +1078,28 @@ export default function SettingsScreen() {
             </Pressable>
           </View>
         ) : null}
+          </>
+        )}
       </ScrollView>
+
+      {supabaseConfigured ? (
+        <>
+          <AllTrophiesSheet
+            visible={allTrophiesOpen}
+            rows={achievementRows}
+            bottomInset={insets.bottom}
+            onClose={() => setAllTrophiesOpen(false)}
+            onSelectTrophy={(row) => {
+              setAllTrophiesOpen(false);
+              setAchievementDetailRow(row);
+            }}
+          />
+          <AchievementDetailModal
+            row={achievementDetailRow}
+            onClose={() => setAchievementDetailRow(null)}
+          />
+        </>
+      ) : null}
     </View>
   );
 }
@@ -858,54 +1126,153 @@ const styles = StyleSheet.create({
     gap: 10,
     backgroundColor: StitchColors.surface,
   },
+  /** Awatar + treść w jednym rzędzie; metryki jako pigułki (Stitch: hierarchia przez tło). */
   profileCard: {
-    flexDirection: "column",
-    alignItems: "center",
-    gap: 20,
-    padding: 28,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 14,
+    padding: 16,
     borderRadius: StitchRadius.lg,
     backgroundColor: StitchColors.surfaceContainerLow,
   },
   avatarWrap: {
-    alignSelf: "center",
+    paddingTop: 2,
   },
-  /** Jeden widok = jedno kółko (bez zagnieżdżonego kwadratu z tłem pod `overflow`). */
   avatarCircle: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     overflow: "hidden",
     backgroundColor: StitchColors.primaryContainer,
-    borderWidth: 3,
-    borderColor: "rgba(133, 150, 255, 0.42)",
+    borderWidth: 2,
+    borderColor: `${StitchColors.primary}33`,
     alignItems: "center",
     justifyContent: "center",
+    ...Platform.select({
+      ios: {
+        shadowColor: StitchColors.primary,
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.12,
+        shadowRadius: 10,
+      },
+      android: { elevation: 3 },
+    }),
   },
   avatarInitials: {
-    fontSize: 30,
+    fontSize: 24,
     fontFamily: StitchFonts.headline,
     color: StitchColors.onPrimaryContainer,
     letterSpacing: 0.5,
     textAlign: "center",
     includeFontPadding: false,
   },
-  profileTextCol: {
-    width: "100%",
-    alignItems: "center",
+  profileBody: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
+    paddingTop: 2,
   },
   profileName: {
-    fontSize: 20,
+    fontSize: 18,
     fontFamily: StitchFonts.headline,
     color: StitchColors.onSurface,
-    marginBottom: 4,
-    textAlign: "center",
+    letterSpacing: -0.2,
+    lineHeight: 24,
   },
   profileSubtitle: {
-    fontSize: 14,
+    fontSize: 12,
     fontFamily: StitchFonts.body,
     color: StitchColors.onSurfaceVariant,
-    textAlign: "center",
-    lineHeight: 20,
+    lineHeight: 16,
+    opacity: 0.95,
+  },
+  profileStatChips: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 10,
+    width: "100%",
+  },
+  profileChipStreak: {
+    flex: 1,
+    minWidth: 120,
+    borderRadius: StitchRadius.md,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: "rgba(211, 47, 47, 0.08)",
+    gap: 4,
+  },
+  profileChipStreakMain: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  profileChipStreakValue: {
+    fontSize: 22,
+    fontFamily: StitchFonts.headline,
+    color: "#B71C1C",
+    letterSpacing: 0.15,
+    includeFontPadding: false,
+    ...Platform.select({
+      android: { textAlignVertical: "center" },
+      default: {},
+    }),
+  },
+  profileChipStreakDni: {
+    fontSize: 11,
+    fontFamily: StitchFonts.bodySemi,
+    color: StitchColors.onSurfaceVariant,
+    letterSpacing: 0.15,
+    textTransform: "uppercase",
+    marginTop: 2,
+    includeFontPadding: false,
+  },
+  profileChipStreakRekord: {
+    fontSize: 11,
+    fontFamily: StitchFonts.body,
+    color: StitchColors.onSurfaceVariant,
+    lineHeight: 14,
+    opacity: 0.88,
+  },
+  profileChipWords: {
+    flex: 1,
+    minWidth: 120,
+    borderRadius: StitchRadius.md,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: StitchColors.surfaceContainer,
+    gap: 4,
+  },
+  profileChipWordsMain: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  profileChipWordsValue: {
+    fontSize: 22,
+    fontFamily: StitchFonts.headline,
+    color: StitchColors.primary,
+    letterSpacing: 0.15,
+    includeFontPadding: false,
+    ...Platform.select({
+      android: { textAlignVertical: "center" },
+      default: {},
+    }),
+  },
+  profileChipWordsLabel: {
+    fontSize: 11,
+    fontFamily: StitchFonts.body,
+    color: StitchColors.onSurfaceVariant,
+    lineHeight: 14,
+    opacity: 0.88,
+  },
+  profileEmailLine: {
+    marginTop: 6,
+    fontSize: 11,
+    fontFamily: StitchFonts.body,
+    color: StitchColors.onSurfaceVariant,
+    lineHeight: 15,
+    opacity: 0.8,
   },
   /** Odtwarza `gap` z `scrollContent` między nagłówkiem a panelem (wcześej były osobnymi dziećmi ScrollView). */
   learningModeSection: {

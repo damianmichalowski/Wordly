@@ -37,6 +37,7 @@ import {
   type LibraryLevelTier,
 } from "@/src/types/cefr";
 import { StitchColors } from "@/src/theme/wordlyStitchTheme";
+import { logUserAction } from "@/src/utils/userActionLog";
 
 import { revisionFiltersSheetStyles as s } from "./revisionFiltersSheetStyles";
 
@@ -84,6 +85,7 @@ export function RevisionFiltersSheet({
   }, [visible, initialSortPrefs, initialSelectedTiers]);
 
   const resetDraft = useCallback(() => {
+    logUserAction("button_press", { target: "filters_sheet_reset" });
     setDraft({
       sortPrefs: { ...DEFAULT_REVISION_SORT_PREFS },
       selectedTiers: [],
@@ -91,6 +93,11 @@ export function RevisionFiltersSheet({
   }, []);
 
   const apply = useCallback(() => {
+    logUserAction("filters_apply", {
+      target: "library",
+      sortOrder: draft.sortPrefs.timeOrder,
+      tierCount: draft.selectedTiers.length,
+    });
     onApply({
       sortPrefs: draft.sortPrefs,
       selectedTiers: draft.selectedTiers,
@@ -98,6 +105,10 @@ export function RevisionFiltersSheet({
   }, [draft, onApply]);
 
   const toggleTier = useCallback((tier: LibraryLevelTier) => {
+    logUserAction("filters_change", {
+      target: "library_filter_tier_toggle",
+      tier,
+    });
     setDraft((prev) => {
       const has = prev.selectedTiers.includes(tier);
       const selectedTiers = has
@@ -140,23 +151,38 @@ export function RevisionFiltersSheet({
   }));
 
   const setTimeOrder = useCallback((next: "newest" | "oldest") => {
+    logUserAction("filters_change", {
+      target: "library_sort_time_order",
+      order: next,
+    });
     setDraft((prev) => ({
       ...prev,
       sortPrefs: { ...prev.sortPrefs, timeOrder: next },
     }));
   }, []);
 
+  const dismissSheet = useCallback(
+    (reason: "backdrop" | "close" | "system") => {
+      logUserAction("button_press", {
+        target: "filters_sheet_dismiss",
+        reason,
+      });
+      onClose();
+    },
+    [onClose],
+  );
+
   return (
     <Modal
       visible={visible}
       transparent
       animationType="slide"
-      onRequestClose={onClose}
+      onRequestClose={() => dismissSheet("system")}
     >
       <View style={s.modalRoot}>
         <Pressable
           style={[StyleSheet.absoluteFillObject, s.scrim]}
-          onPress={onClose}
+          onPress={() => dismissSheet("backdrop")}
           accessibilityLabel="Zamknij"
         />
         <View style={s.sheet}>
@@ -173,7 +199,7 @@ export function RevisionFiltersSheet({
               Filtry i sortowanie
             </Text>
             <Pressable
-              onPress={onClose}
+              onPress={() => dismissSheet("close")}
               android_ripple={ANDROID_RIPPLE_ICON_ROUND}
               style={({ pressed }) => [s.closeBtn, roundIconPressStyle(pressed, false)]}
               accessibilityRole="button"

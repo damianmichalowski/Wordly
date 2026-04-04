@@ -11,6 +11,11 @@ import {
 
 import { ScreenHeader } from "@/src/components/layout/ScreenHeader";
 import { CenteredUnlockCtaCard } from "@/src/components/ui/CenteredUnlockCtaCard";
+import { TransportRetryMessage } from "@/src/components/ui/TransportRetryMessage";
+import {
+  STUCK_LOADING_MS,
+  useStuckLoading,
+} from "@/src/hooks/useStuckLoading";
 import {
   ANDROID_RIPPLE_ICON_ROUND,
   ANDROID_RIPPLE_PRIMARY,
@@ -20,12 +25,18 @@ import {
   surfacePressStyle,
 } from "@/src/components/ui/interaction";
 import {
+  RevisionFiltersSheet,
+  type RevisionFiltersApplyPayload,
+} from "@/src/features/revision/components/RevisionFiltersSheet";
+import { revisionScreenStyles as styles } from "@/src/features/revision/revisionScreenStyles";
+import {
   LIBRARY_TIER_CEFR_LEVELS,
   LIBRARY_TIER_LABEL,
   type CefrLevel,
   type LibraryLevelTier,
 } from "@/src/types/cefr";
 import { StitchColors } from "@/src/theme/wordlyStitchTheme";
+import { logUserAction } from "@/src/utils/userActionLog";
 import {
   vocabularyWordDisplayTargetText,
   type VocabularyWord,
@@ -36,31 +47,63 @@ import type {
   RevisionTimeOrder,
 } from "@/src/services/revision/revisionSortPrefs";
 
-import {
-  RevisionFiltersSheet,
-  type RevisionFiltersApplyPayload,
-} from "@/src/features/revision/components/RevisionFiltersSheet";
-import { revisionScreenStyles as styles } from "../revisionScreenStyles";
+const LIST_SKEL_PREFIX = "__wordly_list_skel__";
 
-type RevisionKnownWordsListProps = {
+function skeletonRowItems(count: number): VocabularyWord[] {
+  return Array.from({ length: count }, (_, i) => ({
+    id: `${LIST_SKEL_PREFIX}${i}`,
+    sourceLanguageCode: "en" as VocabularyWord["sourceLanguageCode"],
+    targetLanguageCode: "en" as VocabularyWord["targetLanguageCode"],
+    sourceText: "",
+    targetText: "",
+    exampleSource: "",
+    exampleTarget: "",
+    cefrLevel: "A1" as VocabularyWord["cefrLevel"],
+    knownAt: null,
+  }));
+}
+
+function KnownWordRowSkeleton() {
+  return (
+    <View style={[styles.rowCard, styles.rowCardSkeleton]} pointerEvents="none">
+      <View style={styles.rowMain}>
+        <View style={styles.skeletonLine} />
+      </View>
+    </View>
+  );
+}
+
+export type KnownWordsListProps = {
   knownWords: VocabularyWord[];
   sortPrefs: RevisionSortPrefs;
   onSortPrefsChange: (prefs: RevisionSortPrefs) => void;
-  onStartFlashcards: () => void;
   onOpenWord: (word: VocabularyWord) => void;
-  /** Gdy `true` i lista jest pusta (0 słów), pokazuje „unlock” jako empty state i blokuje wyszukiwarkę/filtry. */
+  /**
+   * Gdy `true` — serwer potwierdził 0 znanych słów (nie samo `knownWords.length` zanim zsynchronizuje się z query).
+   * Parent musi ustawić to tylko po rozstrzygniętym fetchu biblioteki.
+   */
   showUnlockEmptyState?: boolean;
   onUnlockPrimaryPress?: () => void;
-  /** Domyślnie „Biblioteka”; w sesji np. tytuł trybu. */
+  /** Domyślnie „Biblioteka”. */
   headerTitle?: string;
   onBackPress?: () => void;
-  /** Lista z wybranego trybu (nie pełna biblioteka). */
-  sessionVariant?: boolean;
-  /** Wejście do centrum trybów (Stitch), tylko przy zwykłej bibliotece. */
-  onOpenRevisionHub?: () => void;
   backAccessibilityLabel?: string;
-  /** Kafel „Ćwicz fiszki”; wyłącz np. w zakładce Szukaj (powtórka z Revision Hub). */
-  showFlashcardHero?: boolean;
+  /** Pierwszy fetch biblioteki — wiersze-szkielety zamiast pustego ekranu ze spinnerem. */
+  listHydrating?: boolean;
+  /**
+   * Biblioteka: licznik z odpowiedzi query (`libraryQuery.data.length`), nie `knownWords.length` przed sync.
+   */
+  effectiveKnownCount?: number;
+  /**
+   * Biblioteka: nie pokazuj ogólnego „Jeszcze brak słów” — potwierdzone pusto obsługuje unlock CTA;
+   * nierozstrzygnięty / błąd nie powinien udawać pustej listy.
+   */
+  suppressGenericEmptyMessage?: boolean;
+  /** Biblioteka: pierwszy fetch zakończony błędem — pokaż komunikat + retry zamiast pustej listy. */
+  libraryLoadError?: boolean;
+  /** Spinner przy retry / refetch biblioteki (błąd lub „stuck” loading). */
+  libraryFetchBusy?: boolean;
+  onRetryLibrary?: () => void;
 };
 
 function formatTiersList(tiers: LibraryLevelTier[]): string {
@@ -118,7 +161,7 @@ function sortWordsByKnownAt(
 }
 
 /** Poza komponentem listy (stabilna referencja dla `ListEmptyComponent`). */
-function RevisionListEmpty({ hasSearch }: { hasSearch: boolean }) {
+function KnownWordsListEmpty({ hasSearch }: { hasSearch: boolean }) {
   return (
     <View style={styles.emptyList}>
       <Text style={styles.title}>
@@ -133,7 +176,7 @@ function RevisionListEmpty({ hasSearch }: { hasSearch: boolean }) {
   );
 }
 
-const RevisionKnownWordRow = memo(function RevisionKnownWordRow({
+const KnownWordRow = memo(function KnownWordRow({
   item,
   onOpenWord,
 }: {
@@ -164,73 +207,35 @@ const RevisionKnownWordRow = memo(function RevisionKnownWordRow({
   );
 });
 
-type RevisionListHeaderProps = {
+type KnownWordsListHeaderProps = {
   knownCount: number;
-  sessionVariant: boolean;
-  showFlashcardHero: boolean;
-  onStartFlashcards: () => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
   onOpenFilters: () => void;
   activeFilterCount: number;
   controlsDisabled?: boolean;
+  listHydrating?: boolean;
 };
 
-const RevisionListHeader = memo(function RevisionListHeader({
+const KnownWordsListHeader = memo(function KnownWordsListHeader({
   knownCount,
-  sessionVariant,
-  showFlashcardHero,
-  onStartFlashcards,
   searchQuery,
   onSearchChange,
   onOpenFilters,
   activeFilterCount,
   controlsDisabled = false,
-}: RevisionListHeaderProps) {
+  listHydrating = false,
+}: KnownWordsListHeaderProps) {
   const [searchFocused, setSearchFocused] = useState(false);
-  const statsLine = sessionVariant
-    ? knownCount === 1
-      ? "1 słowo w tej sesji"
-      : `${knownCount} słów w tej sesji`
+  const statsLine = listHydrating
+    ? "Wczytuję bibliotekę…"
     : knownCount === 1
       ? "1 słowo w bibliotece"
       : `${knownCount} słów w bibliotece`;
 
-  const ctaSubtitle =
-    knownCount === 1
-      ? "1 słowo w kolejce"
-      : `${knownCount} słów w kolejce`;
-
   return (
     <View style={styles.listHeaderBlock}>
       <Text style={styles.libraryStats}>{statsLine}</Text>
-
-      {showFlashcardHero && knownCount > 0 ? (
-        <Pressable
-          android_ripple={ANDROID_RIPPLE_PRIMARY}
-          style={({ pressed }) => [
-            styles.heroCta,
-            primarySolidPressStyle(pressed, false),
-          ]}
-          onPress={onStartFlashcards}
-        >
-          <View style={styles.heroCtaDecor} pointerEvents="none" />
-          <View style={styles.heroCtaInner}>
-            <View style={styles.heroCtaBadgeRow}>
-              <View style={styles.heroCtaIconWrap}>
-                <Ionicons
-                  name="color-palette"
-                  size={22}
-                  color={StitchColors.onPrimary}
-                />
-              </View>
-              <Text style={styles.heroCtaKicker}>Gotowe do powtórki</Text>
-            </View>
-            <Text style={styles.heroCtaTitle}>Ćwicz fiszki</Text>
-            <Text style={styles.heroCtaSubtitle}>{ctaSubtitle}</Text>
-          </View>
-        </Pressable>
-      ) : null}
 
       <View style={styles.filtersTriggerRow}>
         <View
@@ -247,9 +252,7 @@ const RevisionListHeader = memo(function RevisionListHeader({
           />
           <TextInput
             style={styles.filtersSearchInputCompact}
-            placeholder={
-              sessionVariant ? "Szukaj na liście…" : "Szukaj w bibliotece…"
-            }
+            placeholder="Szukaj w bibliotece…"
             placeholderTextColor={`${StitchColors.outlineVariant}99`}
             value={searchQuery}
             onChangeText={onSearchChange}
@@ -290,30 +293,40 @@ const RevisionListHeader = memo(function RevisionListHeader({
         </Pressable>
       </View>
 
-      <Text style={styles.sectionRecentLabel}>
-        {sessionVariant ? "Lista słów" : "Ostatnie słowa"}
-      </Text>
+      <Text style={styles.sectionRecentLabel}>Ostatnie słowa</Text>
     </View>
   );
 });
 
-export function RevisionKnownWordsList({
+/**
+ * Lista znanych słów (zakładka Biblioteka).
+ * Style filtrów w `revisionScreenStyles` (współdzielone z modułem rewizji).
+ */
+export function KnownWordsList({
   knownWords,
   sortPrefs,
   onSortPrefsChange,
-  onStartFlashcards,
   onOpenWord,
   showUnlockEmptyState = false,
   onUnlockPrimaryPress,
   headerTitle = "Biblioteka",
   onBackPress,
-  sessionVariant = false,
-  showFlashcardHero = true,
-  backAccessibilityLabel = "Wróć do Revision Hub",
-}: RevisionKnownWordsListProps) {
+  backAccessibilityLabel = "Wróć",
+  listHydrating = false,
+  effectiveKnownCount,
+  suppressGenericEmptyMessage = false,
+  libraryLoadError = false,
+  libraryFetchBusy = false,
+  onRetryLibrary,
+}: KnownWordsListProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTiers, setSelectedTiers] = useState<LibraryLevelTier[]>([]);
   const [sheetVisible, setSheetVisible] = useState(false);
+
+  const stuckHydrating = useStuckLoading(
+    listHydrating && !libraryLoadError,
+    STUCK_LOADING_MS,
+  );
 
   const activeFilterCount = useMemo(() => {
     let n = 0;
@@ -336,6 +349,11 @@ export function RevisionKnownWordsList({
     [onSortPrefsChange],
   );
 
+  const openFiltersSheet = useCallback(() => {
+    logUserAction("button_press", { target: "library_open_filters_sheet" });
+    setSheetVisible(true);
+  }, []);
+
   const filteredWords = useMemo(() => {
     let list = knownWords;
     if (selectedTiers.length > 0) {
@@ -353,56 +371,92 @@ export function RevisionKnownWordsList({
     return sortWordsByKnownAt(filtered, sortPrefs.timeOrder);
   }, [knownWords, searchQuery, selectedTiers, sortPrefs.timeOrder]);
 
-  const disableControls = showUnlockEmptyState && knownWords.length === 0;
+  const listShowsSkeletons = listHydrating && !stuckHydrating;
+  const flatData = listShowsSkeletons
+    ? skeletonRowItems(8)
+    : filteredWords;
+
+  const headerKnownCount =
+    effectiveKnownCount !== undefined
+      ? effectiveKnownCount
+      : knownWords.length;
+
+  const disableControls =
+    listHydrating ||
+    Boolean(showUnlockEmptyState);
 
   const listHeader = useMemo(
     () => (
-      <RevisionListHeader
-        knownCount={knownWords.length}
-        sessionVariant={sessionVariant}
-        showFlashcardHero={showFlashcardHero}
-        onStartFlashcards={onStartFlashcards}
+      <KnownWordsListHeader
+        knownCount={headerKnownCount}
         searchQuery={searchQuery}
         onSearchChange={disableControls ? () => {} : setSearchQuery}
-        onOpenFilters={disableControls ? () => {} : () => setSheetVisible(true)}
+        onOpenFilters={disableControls ? () => {} : openFiltersSheet}
         activeFilterCount={activeFilterCount}
         controlsDisabled={disableControls}
+        listHydrating={listHydrating}
       />
     ),
     [
-      knownWords.length,
-      sessionVariant,
-      showFlashcardHero,
-      onStartFlashcards,
+      headerKnownCount,
       searchQuery,
       activeFilterCount,
       disableControls,
+      openFiltersSheet,
+      listHydrating,
     ],
   );
 
   const keyExtractor = useCallback((item: VocabularyWord) => item.id, []);
 
   const renderItem = useCallback(
-    (info: ListRenderItemInfo<VocabularyWord>) => (
-      <RevisionKnownWordRow item={info.item} onOpenWord={onOpenWord} />
-    ),
+    (info: ListRenderItemInfo<VocabularyWord>) =>
+      info.item.id.startsWith(LIST_SKEL_PREFIX) ? (
+        <KnownWordRowSkeleton />
+      ) : (
+        <KnownWordRow item={info.item} onOpenWord={onOpenWord} />
+      ),
     [onOpenWord],
   );
 
   const empty = useMemo(() => {
+    if (listShowsSkeletons) {
+      return null;
+    }
+    if (stuckHydrating && onRetryLibrary) {
+      return (
+        <TransportRetryMessage
+          variant="embedded"
+          isRetrying={libraryFetchBusy}
+          onRetry={onRetryLibrary}
+        />
+      );
+    }
+    if (libraryLoadError && onRetryLibrary) {
+      return (
+        <TransportRetryMessage
+          variant="embedded"
+          isRetrying={libraryFetchBusy}
+          onRetry={onRetryLibrary}
+        />
+      );
+    }
+    if (showUnlockEmptyState) {
+      return (
+        <CenteredUnlockCtaCard
+          icon="lock-closed-outline"
+          title="Twoja biblioteka jest pusta"
+          body="Oznacz słowo jako „Known” w Daily Word — wtedy pojawi się tutaj."
+          primaryLabel="Przejdź do Daily Word"
+          onPrimaryPress={onUnlockPrimaryPress ?? (() => {})}
+        />
+      );
+    }
     if (knownWords.length === 0) {
-      if (showUnlockEmptyState) {
-        return (
-          <CenteredUnlockCtaCard
-            icon="lock-closed-outline"
-            title="Twoja biblioteka jest pusta"
-            body="Oznacz słowo jako „Known” w Daily Word, a pojawi się tutaj. Wtedy odblokujesz też tryby powtórek."
-            primaryLabel="Przejdź do Daily Word"
-            onPrimaryPress={onUnlockPrimaryPress ?? (() => {})}
-          />
-        );
+      if (suppressGenericEmptyMessage) {
+        return null;
       }
-      return <RevisionListEmpty hasSearch={false} />;
+      return <KnownWordsListEmpty hasSearch={false} />;
     }
     if (filteredWords.length === 0) {
       return (
@@ -421,6 +475,12 @@ export function RevisionKnownWordsList({
     selectedTiers,
     showUnlockEmptyState,
     onUnlockPrimaryPress,
+    listShowsSkeletons,
+    suppressGenericEmptyMessage,
+    stuckHydrating,
+    libraryLoadError,
+    libraryFetchBusy,
+    onRetryLibrary,
   ]);
 
   return (
@@ -434,7 +494,7 @@ export function RevisionKnownWordsList({
       />
       <FlatList
         style={styles.listFlat}
-        data={filteredWords}
+        data={flatData}
         keyExtractor={keyExtractor}
         contentContainerStyle={styles.listContent}
         ListHeaderComponent={listHeader}
@@ -449,7 +509,7 @@ export function RevisionKnownWordsList({
         onApply={applyFilters}
         initialSortPrefs={sortPrefs}
         initialSelectedTiers={selectedTiers}
-        showLevelSections={knownWords.length > 0}
+        showLevelSections={headerKnownCount > 0 && !listHydrating}
       />
     </View>
   );

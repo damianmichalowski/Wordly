@@ -1,8 +1,7 @@
-import { DeviceEventEmitter } from 'react-native';
+import { invalidateAfterProfileOrSettingsChange } from "@/src/lib/query/invalidateAfterMutations";
+import { queryClient } from "@/src/lib/query/queryClient";
 
-/** Po udanym „Save settings” Daily / Revision mają przeładować stan z storage. */
-export const PROFILE_SETTINGS_SAVED = 'wordly:profileSettingsSaved';
-
+/** @deprecated Prefer calling `invalidateAfterProfileOrSettingsChange` where you have a `QueryClient`. */
 export function emitProfileSettingsSaved(): void {
-  DeviceEventEmitter.emit(PROFILE_SETTINGS_SAVED);
+  invalidateAfterProfileOrSettingsChange(queryClient);
 }

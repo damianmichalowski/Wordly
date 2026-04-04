@@ -4,6 +4,7 @@ import { Tabs } from 'expo-router';
 import Colors from '@/src/constants/Colors';
 import { useColorScheme } from '@/src/hooks/useColorScheme';
 import { StitchColors } from '@/src/theme/wordlyStitchTheme';
+import { logUserAction } from '@/src/utils/userActionLog';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
@@ -34,6 +35,10 @@ export default function TabLayout() {
       <Tabs.Screen name="index" options={{ href: null }} />
       <Tabs.Screen
         name="home"
+        listeners={{
+          tabPress: () =>
+            logUserAction('tab_press', { target: 'daily_word' }),
+        }}
         options={{
           title: 'Daily Word',
           tabBarIcon: ({ color }) => (
@@ -51,6 +56,10 @@ export default function TabLayout() {
       />
       <Tabs.Screen
         name="revision"
+        listeners={{
+          tabPress: () =>
+            logUserAction('tab_press', { target: 'revision_hub' }),
+        }}
         options={{
           title: 'Revision Hub',
           tabBarIcon: ({ color }) => (
@@ -68,6 +77,10 @@ export default function TabLayout() {
       />
       <Tabs.Screen
         name="library"
+        listeners={{
+          tabPress: () =>
+            logUserAction('tab_press', { target: 'library' }),
+        }}
         options={{
           title: 'Biblioteka',
           tabBarIcon: ({ color }) => (
@@ -85,6 +98,10 @@ export default function TabLayout() {
       />
       <Tabs.Screen
         name="settings"
+        listeners={{
+          tabPress: () =>
+            logUserAction('tab_press', { target: 'settings' }),
+        }}
         options={{
           title: 'Settings',
           tabBarIcon: ({ color }) => (

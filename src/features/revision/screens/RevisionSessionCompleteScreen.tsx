@@ -19,18 +19,22 @@ import {
 } from "@/src/theme/wordlyStitchTheme";
 import { LogTag, logger } from "@/src/utils/logger";
 
-// TODO: integrate revision stats update when stats system is implemented
-
 export type RevisionSessionCompleteScreenProps = {
   sessionStats: RevisionSessionCompletionStats;
   onBackToRevisionHub: () => void;
   onBackToHome: () => void;
+  /** Daily Review session: updated streak count from the server. */
+  dailyReviewStreak?: number;
+  /** Optional streak-related trophy title to show inline (no separate popup). */
+  streakTrophyTitle?: string;
 };
 
 export function RevisionSessionCompleteScreen({
   sessionStats,
   onBackToRevisionHub,
   onBackToHome,
+  dailyReviewStreak,
+  streakTrophyTitle,
 }: RevisionSessionCompleteScreenProps) {
   const insets = useSafeAreaInsets();
 
@@ -39,6 +43,8 @@ export function RevisionSessionCompleteScreen({
   }, []);
 
   const durationLabel = formatSessionDurationMs(sessionStats.sessionDurationMs);
+  const showDailyStreak =
+    sessionStats.mode === "daily" && typeof dailyReviewStreak === "number";
 
   return (
     <View
@@ -65,6 +71,30 @@ export function RevisionSessionCompleteScreen({
             You reviewed {sessionStats.cardsReviewed}{" "}
             {sessionStats.cardsReviewed === 1 ? "word" : "words"}
           </Text>
+          {showDailyStreak ? (
+            <View style={styles.streakBlock}>
+              <View
+                style={styles.streakFireRow}
+                accessibilityLabel={`Daily review streak ${dailyReviewStreak}`}
+              >
+                <Ionicons name="flame" size={22} color="#E65100" />
+                <Text style={styles.streakFire}>
+                  {dailyReviewStreak}{" "}
+                  {dailyReviewStreak === 1 ? "day" : "days"} in a row
+                </Text>
+              </View>
+              {streakTrophyTitle ? (
+                <View style={styles.streakTrophyRow}>
+                  <Ionicons
+                    name="trophy"
+                    size={18}
+                    color={StitchColors.secondary}
+                  />
+                  <Text style={styles.streakTrophyText}>{streakTrophyTitle}</Text>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
           <Text style={styles.meta}>Session time: {durationLabel}</Text>
         </Animated.View>
       </View>
@@ -140,6 +170,41 @@ const styles = StyleSheet.create({
     color: StitchColors.onSurfaceVariant,
     textAlign: "center",
     opacity: 0.9,
+  },
+  streakBlock: {
+    marginTop: 14,
+    alignItems: "center",
+    gap: 8,
+    width: "100%",
+    paddingHorizontal: 8,
+  },
+  streakFireRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    flexWrap: "wrap",
+    paddingHorizontal: 4,
+  },
+  streakFire: {
+    fontSize: 17,
+    fontFamily: StitchFonts.bodySemi,
+    color: StitchColors.onSurface,
+    textAlign: "left",
+    flexShrink: 1,
+  },
+  streakTrophyRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    justifyContent: "center",
+  },
+  streakTrophyText: {
+    fontSize: 15,
+    fontFamily: StitchFonts.body,
+    color: StitchColors.onSurfaceVariant,
+    textAlign: "center",
+    flexShrink: 1,
   },
   actions: {
     gap: 12,

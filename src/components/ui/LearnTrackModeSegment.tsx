@@ -12,6 +12,7 @@ import {
   StitchFonts,
   StitchRadius,
 } from "@/src/theme/wordlyStitchTheme";
+import { logUserAction } from "@/src/utils/userActionLog";
 
 const INSET = 4;
 
@@ -77,7 +78,13 @@ export function LearnTrackModeSegment({
           accessibilityRole="tab"
           accessibilityState={{ selected: value === "difficulty" }}
           disabled={disabled}
-          onPress={() => onChange("difficulty")}
+          onPress={() => {
+            logUserAction("segment_change", {
+              target: "learning_track_mode",
+              mode: "difficulty",
+            });
+            onChange("difficulty");
+          }}
           style={({ pressed }) => [
             styles.hit,
             pressed && !disabled && styles.hitPressed,
@@ -96,7 +103,13 @@ export function LearnTrackModeSegment({
           accessibilityRole="tab"
           accessibilityState={{ selected: value === "category" }}
           disabled={disabled}
-          onPress={() => onChange("category")}
+          onPress={() => {
+            logUserAction("segment_change", {
+              target: "learning_track_mode",
+              mode: "category",
+            });
+            onChange("category");
+          }}
           style={({ pressed }) => [
             styles.hit,
             pressed && !disabled && styles.hitPressed,

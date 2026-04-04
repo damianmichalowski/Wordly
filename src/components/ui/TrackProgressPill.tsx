@@ -2,23 +2,23 @@ import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import { useEffect } from "react";
 import {
-  LayoutChangeEvent,
-  Platform,
-  PlatformColor,
-  StyleSheet,
-  Text,
-  View,
+    LayoutChangeEvent,
+    Platform,
+    PlatformColor,
+    StyleSheet,
+    Text,
+    View,
 } from "react-native";
 import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
+    useAnimatedStyle,
+    useSharedValue,
+    withTiming,
 } from "react-native-reanimated";
 
 import {
-  StitchColors,
-  StitchFonts,
-  StitchRadius,
+    StitchColors,
+    StitchFonts,
+    StitchRadius,
 } from "@/src/theme/wordlyStitchTheme";
 
 const FILL_TIMING_MS = 420;
@@ -71,15 +71,15 @@ export function TrackProgressPill({
   isInitialProfileLoading = false,
 }: TrackProgressPillProps) {
   const pct =
-    progressPercent === null
-      ? 0
-      : Math.min(100, Math.max(0, progressPercent));
+    progressPercent === null ? 0 : Math.min(100, Math.max(0, progressPercent));
 
   const shellWidth = useSharedValue(0);
   const progress = useSharedValue(pct);
 
   useEffect(() => {
     progress.value = withTiming(pct, { duration: FILL_TIMING_MS });
+    // `progress` is a Reanimated shared value — stable ref; animate only when pct changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- see above
   }, [pct]);
 
   const onShellLayout = (e: LayoutChangeEvent) => {
@@ -113,11 +113,14 @@ export function TrackProgressPill({
         ? `${trackName}, brak wartości procentowej`
         : `${trackName}, ${Math.round(pct)} procent`;
 
-  const blurProps =
-    Platform.OS === "ios" ? BLUR_IOS : BLUR_ANDROID;
+  const blurProps = Platform.OS === "ios" ? BLUR_IOS : BLUR_ANDROID;
 
   return (
-    <View style={styles.outer} accessibilityRole="text" accessibilityLabel={a11yLabel}>
+    <View
+      style={styles.outer}
+      accessibilityRole="text"
+      accessibilityLabel={a11yLabel}
+    >
       {/* Obwódka „nad” jasnym tłem, pigułka nie zlewa się z #F9F9F9. */}
       <View style={styles.shell} onLayout={onShellLayout}>
         <View style={styles.depthPlate} pointerEvents="none" />

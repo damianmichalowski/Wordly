@@ -11,21 +11,6 @@ export function formatSessionDurationMs(ms: number): string {
   return `${s}s`;
 }
 
-export function getSessionScreenTitle(config: RevisionSessionConfig): string {
-  switch (config.kind) {
-    case "daily":
-      return "Powtórka dzienna";
-    case "quick":
-      return "Szybka sesja";
-    case "recent":
-      return "Ostatnio dodane";
-    case "category":
-      return "Kategoria";
-    case "custom":
-      return "Własna sesja";
-  }
-}
-
 export function getFlashSessionLabel(config: RevisionSessionConfig): string {
   switch (config.kind) {
     case "daily":

@@ -1,9 +1,9 @@
 import type { PostgrestError } from "@supabase/supabase-js";
 
+import type { Database } from "@/src/lib/supabase/database.types";
 import { supabase } from "@/src/lib/supabase/client";
 
-type RpcName = Parameters<typeof supabase.rpc>[0];
-type RpcArgs<TName extends RpcName> = Parameters<typeof supabase.rpc<TName>>[1];
+type RpcName = keyof Database["public"]["Functions"];
 
 function formatPostgrestError(err: PostgrestError) {
   return {
@@ -18,9 +18,13 @@ function formatPostgrestError(err: PostgrestError) {
  * Wrapper around `supabase.rpc` that logs timing + full error context.
  * Keeps payloads in logs (ids etc.) to make SQL debugging easier during development.
  */
-export async function rpc<TName extends RpcName>(
-  name: TName,
-  args?: RpcArgs<TName>,
+/**
+ * Second argument is intentionally loose: `Parameters<typeof supabase.rpc>` does not
+ * infer RPC args reliably for all `Database["public"]["Functions"]` entries.
+ */
+export async function rpc(
+  name: RpcName,
+  args?: Record<string, unknown>,
 ) {
   const startedAt = Date.now();
   const label = `[wordly][rpc] ${String(name)}`;

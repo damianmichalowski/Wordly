@@ -1,14 +1,15 @@
+import { markDailyWordAsKnown } from "@/src/features/daily-word/services/dailyWord.service";
 import type { DailyWordResult } from "@/src/features/daily-word/types/dailyWord.types";
-import {
-    getDailyWordWithDetails,
-    markDailyWordAsKnown,
-} from "@/src/features/daily-word/services/dailyWord.service";
 import {
     getLearningTrackProgress,
     type LearningTrackProgress,
 } from "@/src/features/profile/services/learningProgress.service";
 import { getUserProfileSettings } from "@/src/features/profile/services/profile.service";
 import type { UserProfileSettings } from "@/src/features/profile/types/profile.types";
+import { createDailyWordCurrentQueryFn } from "@/src/lib/query/dailyWordCurrentQuery";
+import { queryClient } from "@/src/lib/query/queryClient";
+import { queryKeys } from "@/src/lib/query/queryKeys";
+import { staleTimes } from "@/src/lib/query/staleTimes";
 import { hasSupabaseEnv } from "@/src/lib/supabase/client";
 import {
     buildHomeDeepLink,
@@ -27,9 +28,7 @@ type SnapshotOptions = {
 
 /** Do 3 linii tłumaczeń na widżet (sensy wg `sense_order`). */
 export function translationLinesForWidget(
-  senses:
-    | { sense_order: number; translation: { text: string } }[]
-    | undefined,
+  senses: { sense_order: number; translation: { text: string } }[] | undefined,
   maxLines = 3,
 ): string[] {
   if (!senses?.length) {
@@ -41,9 +40,6 @@ export function translationLinesForWidget(
     .map((s) => s.translation.text.trim())
     .filter((t) => t.length > 0);
 }
-
-/** Zgodne z `getOrCreateDailyWord`, brak wiersza z RPC; nie traktujemy jako błąd widgetu. */
-const DAILY_WORD_NOT_RETURNED = "Daily word was not returned";
 
 function polishWordsForm(n: number): string {
   if (n === 1) {
@@ -146,41 +142,50 @@ function buildUnavailableSnapshot(): WidgetSurfaceSnapshot {
 export async function getWidgetSurfaceSnapshot(
   options: SnapshotOptions = {},
 ): Promise<WidgetSurfaceSnapshot> {
-  const settings = await getUserProfileSettings();
+  const qc = queryClient;
+  const settings = await qc.fetchQuery({
+    queryKey: queryKeys.profile.settings,
+    queryFn: getUserProfileSettings,
+    staleTime: staleTimes.profileSettings,
+  });
   if (!settings) {
     return buildUnavailableSnapshot();
   }
 
-  let daily: DailyWordResult;
+  let daily: DailyWordResult | null;
   try {
-    daily = await getDailyWordWithDetails();
+    daily = await qc.fetchQuery({
+      queryKey: queryKeys.dailyWord.current,
+      queryFn: createDailyWordCurrentQueryFn(qc),
+      staleTime: staleTimes.dailyWordCurrent,
+    });
   } catch (e) {
-    if (e instanceof Error && e.message === DAILY_WORD_NOT_RETURNED) {
-      try {
-        const track = await getLearningTrackProgress();
-        const completed =
-          track.availableCount > 0 &&
-          track.knownCount >= track.availableCount;
-        if (completed) {
-          return buildTrackCompletedWidgetSnapshot(settings, track);
-        }
-      } catch {
-        /* fall through */
-      }
-      if (__DEV__) {
-        console.warn("[wordly] syncWidgetSnapshotFromApp failed", e);
-      }
-      return buildNoDailyWordWidgetSnapshot(settings);
-    }
     throw e;
+  }
+
+  if (!daily) {
+    try {
+      const track = await qc.fetchQuery({
+        queryKey: queryKeys.learning.trackProgress,
+        queryFn: getLearningTrackProgress,
+        staleTime: staleTimes.learningTrackProgress,
+      });
+      const completed =
+        track.availableCount > 0 && track.knownCount >= track.availableCount;
+      if (completed) {
+        return buildTrackCompletedWidgetSnapshot(settings, track);
+      }
+    } catch {
+      /* fall through */
+    }
+    return buildNoDailyWordWidgetSnapshot(settings);
   }
 
   const wordId = daily.details.word_id;
   const translationLines = options.revealTranslation
     ? translationLinesForWidget(daily.details.senses)
     : [];
-  const translation =
-    translationLines.length > 0 ? translationLines[0] : null;
+  const translation = translationLines.length > 0 ? translationLines[0] : null;
 
   const homeParams = {
     wordId,
@@ -217,7 +222,12 @@ export async function applyWidgetAction(params: {
   action: WidgetActionType;
   expectedStateVersion?: number;
 }): Promise<WidgetActionResult> {
-  const settings = await getUserProfileSettings();
+  const qc = queryClient;
+  const settings = await qc.fetchQuery({
+    queryKey: queryKeys.profile.settings,
+    queryFn: getUserProfileSettings,
+    staleTime: staleTimes.profileSettings,
+  });
   if (!settings || !hasSupabaseEnv()) {
     return {
       status: "unavailable",
@@ -233,19 +243,24 @@ export async function applyWidgetAction(params: {
   }
 
   await syncWidgetLoadingSnapshot();
-  let daily: DailyWordResult;
+  let daily: DailyWordResult | null;
   try {
-    daily = await getDailyWordWithDetails();
+    daily = await qc.fetchQuery({
+      queryKey: queryKeys.dailyWord.current,
+      queryFn: createDailyWordCurrentQueryFn(qc),
+      staleTime: staleTimes.dailyWordCurrent,
+    });
   } catch (e) {
-    if (e instanceof Error && e.message === DAILY_WORD_NOT_RETURNED) {
-      return {
-        status: "unavailable",
-        snapshot: await getWidgetSurfaceSnapshot(),
-      };
-    }
     throw e;
   }
+  if (!daily) {
+    return {
+      status: "unavailable",
+      snapshot: await getWidgetSurfaceSnapshot(),
+    };
+  }
   await markDailyWordAsKnown(daily.details.word_id);
+  await qc.invalidateQueries({ queryKey: queryKeys.dailyWord.current });
 
   return {
     status: "ok",

@@ -1,4 +1,5 @@
 import { useRouter } from 'expo-router';
+import { USER_FACING_SIGN_IN_FAILED } from '@/src/components/ui/transportRetry.constants';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -16,6 +17,7 @@ import {
   surfacePressStyle,
 } from '@/src/components/ui/interaction';
 import { StitchColors, StitchFonts, StitchRadius } from '@/src/theme/wordlyStitchTheme';
+import { logUserAction } from '@/src/utils/userActionLog';
 
 export default function OnboardingScreen() {
   const router = useRouter();
@@ -55,6 +57,7 @@ export default function OnboardingScreen() {
   }, [router]);
 
   const onGoogle = useCallback(async () => {
+    logUserAction('button_press', { target: 'onboarding_sign_in_google' });
     setBusy(true);
     const result = await signInWithGoogle();
     setBusy(false);
@@ -62,10 +65,11 @@ export default function OnboardingScreen() {
       await afterSuccessfulSignIn();
       return;
     }
-    Alert.alert('Google', result.message);
+    Alert.alert('Google', USER_FACING_SIGN_IN_FAILED);
   }, [afterSuccessfulSignIn]);
 
   const onApple = useCallback(async () => {
+    logUserAction('button_press', { target: 'onboarding_sign_in_apple' });
     setBusy(true);
     const result = await signInWithApple();
     setBusy(false);
@@ -73,7 +77,7 @@ export default function OnboardingScreen() {
       await afterSuccessfulSignIn();
       return;
     }
-    Alert.alert('Apple', result.message);
+    Alert.alert('Apple', USER_FACING_SIGN_IN_FAILED);
   }, [afterSuccessfulSignIn]);
 
   return (

@@ -33,6 +33,7 @@ import { useOnboardingDraft } from "@/src/features/onboarding/OnboardingProvider
 import { getOnboardingOptions } from "@/src/features/profile/services/profile.service";
 import type { OnboardingLanguage } from "@/src/features/profile/types/profile.types";
 import { StitchColors, StitchFonts, StitchRadius } from "@/src/theme/wordlyStitchTheme";
+import { logUserAction } from "@/src/utils/userActionLog";
 
 type PickerSlot = "source" | "target" | null;
 
@@ -204,6 +205,7 @@ export default function OnboardingLanguagePairScreen() {
     draft.nativeLanguageId !== draft.learningLanguageId;
 
   const swapLanguages = () => {
+    logUserAction("button_press", { target: "onboarding_swap_languages" });
     const s = draft.nativeLanguageId;
     if (!s || !draft.learningLanguageId) {
       return;
@@ -212,9 +214,22 @@ export default function OnboardingLanguagePairScreen() {
     setLearningLanguageId(s);
   };
 
-  const closePicker = () => setPicker(null);
+  const dismissLanguagePicker = (
+    reason: "backdrop" | "done" | "system",
+  ) => {
+    logUserAction("button_press", {
+      target: "onboarding_language_picker_dismiss",
+      reason,
+    });
+    setPicker(null);
+  };
 
   const selectLanguageInPicker = (id: string) => {
+    logUserAction("button_press", {
+      target: "onboarding_language_select",
+      which: picker === "source" ? "native" : "learning",
+      languageId: id,
+    });
     if (picker === "source") {
       setNativeLanguageId(id);
     } else if (picker === "target") {
@@ -253,7 +268,13 @@ export default function OnboardingLanguagePairScreen() {
       <Text style={styles.fieldLabel}>Język ojczysty</Text>
       <LanguagePickerRow
         language={native}
-        onPress={() => setPicker("source")}
+        onPress={() => {
+          logUserAction("button_press", {
+            target: "onboarding_open_language_picker",
+            which: "source",
+          });
+          setPicker("source");
+        }}
       />
     </View>
   );
@@ -263,7 +284,13 @@ export default function OnboardingLanguagePairScreen() {
       <Text style={styles.fieldLabel}>Język nauki</Text>
       <LanguagePickerRow
         language={learning}
-        onPress={() => setPicker("target")}
+        onPress={() => {
+          logUserAction("button_press", {
+            target: "onboarding_open_language_picker",
+            which: "target",
+          });
+          setPicker("target");
+        }}
         emptyLabel="Wybierz język"
       />
     </View>
@@ -294,9 +321,12 @@ export default function OnboardingLanguagePairScreen() {
           visible={picker !== null}
           animationType="fade"
           transparent
-          onRequestClose={closePicker}
+          onRequestClose={() => dismissLanguagePicker("system")}
         >
-          <Pressable style={styles.modalBackdrop} onPress={closePicker}>
+          <Pressable
+            style={styles.modalBackdrop}
+            onPress={() => dismissLanguagePicker("backdrop")}
+          >
             <Pressable
               style={styles.modalCard}
               onPress={(e) => e.stopPropagation()}
@@ -363,7 +393,7 @@ export default function OnboardingLanguagePairScreen() {
                   styles.modalDone,
                   linkPressStyle(pressed, false),
                 ]}
-                onPress={closePicker}
+                onPress={() => dismissLanguagePicker("done")}
               >
                 <Text style={styles.modalDoneText}>Gotowe</Text>
               </Pressable>
@@ -403,7 +433,12 @@ export default function OnboardingLanguagePairScreen() {
           </ScrollView>
 
           <Pressable
-            onPress={() => router.push("/(onboarding)/level")}
+            onPress={() => {
+              logUserAction("button_press", {
+                target: "onboarding_continue_to_level",
+              });
+              router.push("/(onboarding)/level");
+            }}
             android_ripple={ANDROID_RIPPLE_PRIMARY}
             style={({ pressed }) => [
               styles.primaryButton,

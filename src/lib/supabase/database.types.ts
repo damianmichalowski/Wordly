@@ -208,6 +208,96 @@ export type Database = {
           },
         ]
       }
+      achievement_definition: {
+        Row: {
+          code: string
+          created_at: string
+          description: string | null
+          icon: string | null
+          id: string
+          is_active: boolean
+          sort_order: number
+          threshold: number
+          title: string
+          type: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          description?: string | null
+          icon?: string | null
+          id?: string
+          is_active?: boolean
+          sort_order: number
+          threshold: number
+          title: string
+          type: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          description?: string | null
+          icon?: string | null
+          id?: string
+          is_active?: boolean
+          sort_order?: number
+          threshold?: number
+          title?: string
+          type?: string
+        }
+        Relationships: []
+      }
+      user_achievement: {
+        Row: {
+          achievement_definition_id: string
+          created_at: string
+          id: string
+          unlocked_at: string
+          user_id: string
+        }
+        Insert: {
+          achievement_definition_id: string
+          created_at?: string
+          id?: string
+          unlocked_at?: string
+          user_id: string
+        }
+        Update: {
+          achievement_definition_id?: string
+          created_at?: string
+          id?: string
+          unlocked_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_achievement_event: {
+        Row: {
+          achievement_definition_id: string
+          consumed_at: string | null
+          created_at: string
+          id: string
+          source: string
+          user_id: string
+        }
+        Insert: {
+          achievement_definition_id: string
+          consumed_at?: string | null
+          created_at?: string
+          id?: string
+          source: string
+          user_id: string
+        }
+        Update: {
+          achievement_definition_id?: string
+          consumed_at?: string | null
+          created_at?: string
+          id?: string
+          source?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_daily_word: {
         Row: {
           created_at: string
@@ -242,32 +332,41 @@ export type Database = {
       }
       user_profile: {
         Row: {
+          achievement_entry_calendar_date: string | null
           created_at: string
+          current_daily_review_streak: number
           id: string
           last_daily_revision_date: string | null
           learning_language_id: string
           learning_level: string | null
           learning_mode_type: string
+          longest_daily_review_streak: number
           native_language_id: string
           selected_category_id: string | null
         }
         Insert: {
+          achievement_entry_calendar_date?: string | null
           created_at?: string
+          current_daily_review_streak?: number
           id: string
           last_daily_revision_date?: string | null
           learning_language_id: string
           learning_level?: string | null
           learning_mode_type: string
+          longest_daily_review_streak?: number
           native_language_id: string
           selected_category_id?: string | null
         }
         Update: {
+          achievement_entry_calendar_date?: string | null
           created_at?: string
+          current_daily_review_streak?: number
           id?: string
           last_daily_revision_date?: string | null
           learning_language_id?: string
           learning_level?: string | null
           learning_mode_type?: string
+          longest_daily_review_streak?: number
           native_language_id?: string
           selected_category_id?: string | null
         }
@@ -435,8 +534,17 @@ export type Database = {
         Args: { p_word_ids: string[] }
         Returns: Json
       }
+      consume_achievement_events: {
+        Args: { p_event_ids: string[] }
+        Returns: Json
+      }
+      get_completion_screen_data: { Args: never; Returns: Json }
       get_daily_review_words: { Args: never; Returns: Json }
       get_daily_word_details: { Args: never; Returns: Json }
+      get_known_word_unlock_data: { Args: never; Returns: Json }
+      get_learning_option_catalog_counts: { Args: never; Returns: Json }
+      get_learning_options_progress: { Args: never; Returns: Json }
+      get_learning_track_progress: { Args: never; Returns: Json }
       get_library_words: {
         Args: {
           p_category_codes?: string[]
@@ -449,6 +557,7 @@ export type Database = {
         Returns: Json
       }
       get_onboarding_options: { Args: never; Returns: Json }
+      get_pending_achievement_events: { Args: never; Returns: Json }
       invalidate_today_daily_word: { Args: never; Returns: undefined }
       get_or_create_daily_word: {
         Args: never
@@ -461,11 +570,14 @@ export type Database = {
       get_quick_practice_words: { Args: { p_limit: number }; Returns: Json }
       get_recently_learned_words: { Args: never; Returns: Json }
       get_revision_hub_stats: { Args: never; Returns: Json }
+      get_user_achievements: { Args: never; Returns: Json }
+      get_user_profile_summary: { Args: never; Returns: Json }
       get_user_profile_settings: { Args: never; Returns: Json }
       get_word_details: { Args: { p_word_id: string }; Returns: Json }
       mark_word_known: {
         Args: { p_word_id: string }
         Returns: {
+          achievement_events: Json
           interval_days: number
           known_at: string
           last_review_at: string
@@ -475,6 +587,16 @@ export type Database = {
           word_id: string
         }[]
       }
+      mark_word_known_and_advance_daily_word: {
+        Args: { p_word_id: string }
+        Returns: {
+          achievement_events: Json
+          daily_word_id: string | null
+          day_date: string | null
+          word_id: string | null
+        }[]
+      }
+      process_app_entry_achievement_events: { Args: never; Returns: Json }
       upsert_user_profile_settings: {
         Args: {
           p_learning_language_id: string

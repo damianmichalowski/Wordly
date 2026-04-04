@@ -69,4 +69,10 @@ export const wordDetailsStyles = StyleSheet.create({
     fontSize: 15,
     color: StitchColors.primary,
   },
+  errorBlock: {
+    alignSelf: "stretch",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 24,
+  },
 });

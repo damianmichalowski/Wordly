@@ -28,61 +28,6 @@ export const revisionScreenStyles = StyleSheet.create({
     fontFamily: StitchFonts.bodyMedium,
     color: StitchColors.onSurfaceVariant,
   },
-  heroCta: {
-    marginTop: 24,
-    marginBottom: 12,
-    borderRadius: StitchRadius.lg,
-    backgroundColor: StitchColors.primary,
-    paddingVertical: 28,
-    paddingHorizontal: 24,
-    overflow: "hidden",
-    shadowColor: StitchColors.primary,
-    shadowOpacity: 0.22,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 6,
-  },
-  heroCtaInner: {
-    zIndex: 1,
-  },
-  heroCtaBadgeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 14,
-  },
-  heroCtaIconWrap: {
-    backgroundColor: "rgba(255,255,255,0.2)",
-    borderRadius: StitchRadius.sm,
-    padding: 8,
-  },
-  heroCtaKicker: {
-    color: "rgba(250,248,255,0.85)",
-    fontFamily: StitchFonts.bodySemi,
-    fontSize: 11,
-    letterSpacing: 2,
-    textTransform: "uppercase",
-  },
-  heroCtaTitle: {
-    color: StitchColors.onPrimary,
-    fontFamily: StitchFonts.headline,
-    fontSize: 22,
-    marginBottom: 4,
-  },
-  heroCtaSubtitle: {
-    color: "rgba(250,248,255,0.72)",
-    fontFamily: StitchFonts.body,
-    fontSize: 14,
-  },
-  heroCtaDecor: {
-    position: "absolute",
-    right: -32,
-    bottom: -32,
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: "rgba(255,255,255,0.1)",
-  },
   /** Pasek: szybkie wyszukiwanie + przycisk otwierający wyspę filtrów (Stitch). */
   filtersTriggerRow: {
     marginTop: 20,
@@ -225,6 +170,16 @@ export const revisionScreenStyles = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
     elevation: 1,
+  },
+  rowCardSkeleton: {
+    opacity: 0.85,
+  },
+  skeletonLine: {
+    height: 16,
+    borderRadius: StitchRadius.sm,
+    backgroundColor: StitchColors.surfaceContainerHigh,
+    width: "62%",
+    maxWidth: 220,
   },
   rowMain: {
     flex: 1,
@@ -825,8 +780,8 @@ export const revisionScreenStyles = StyleSheet.create({
     fontFamily: StitchFonts.headline,
     color: StitchColors.onPrimary,
   },
+  /** Bez `flex: 1` — w pionie pod `flexGrow` treści listy przycisk primary rozciągał się na całą wysokość (mig niebiesko-fioletowego tła). */
   primaryButton: {
-    flex: 1,
     backgroundColor: StitchColors.primary,
     borderRadius: StitchRadius.md,
     paddingVertical: 12,
@@ -858,6 +813,7 @@ export const revisionScreenStyles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingBottom: 40,
   },
+  // (hub fetch error banner — `TransportRetryMessage` variant hubBanner)
   // (unlock banner styles removed; replaced by reusable component)
   hubQuickSizeHint: {
     fontSize: 11,
@@ -1019,24 +975,72 @@ export const revisionScreenStyles = StyleSheet.create({
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 6 },
   },
-  /** Pill „Recommended”, lewy górny róg, żeby nie kolidować z ikoną dekoracyjną po prawej. */
-  hubDailyRecommendedBadge: {
+  /** Wiersz: Recommended / Completed + opcjonalnie streak (ikona + liczba, bez pill). */
+  hubDailyTopBadgesRow: {
     position: "absolute",
     top: 14,
     left: 14,
+    right: 14,
     zIndex: 2,
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 11,
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  /** Pill „Recommended” / „Completed” u góry Daily. */
+  hubDailyRecommendedBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    minHeight: 32,
+    paddingHorizontal: 13,
     paddingVertical: 6,
     borderRadius: StitchRadius.full,
     backgroundColor: `${StitchColors.primary}1F`,
     borderWidth: 1,
     borderColor: `${StitchColors.primary}40`,
   },
+  /**
+   * Streak obok Recommended: ta sama wysokość co pill (minHeight + padding pionowy),
+   * bez tła — tylko ikona + liczba.
+   */
+  hubDailyStreakInline: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    minHeight: 32,
+    paddingVertical: 6,
+  },
+  /** Jak box ikony (20×20) — wspólne centrowanie z liczbą w rzędzie. */
+  hubDailyStreakFlameWrap: {
+    width: 20,
+    height: 20,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  /** Ta sama wysokość co ikona; translateY koryguje optycznie — cyfry siedzą wyżej niż środek glyphu flame. */
+  hubDailyStreakCountWrap: {
+    height: 20,
+    justifyContent: "center",
+    transform: [{ translateY: 2.5 }],
+  },
+  hubDailyStreakTagNumber: {
+    fontSize: 18,
+    fontFamily: StitchFonts.bodySemi,
+    color: "#B71C1C",
+    letterSpacing: 0.2,
+    /** Równe fontSize — mniejsza „pusta” przestrzeń nad linią bazową niż lineHeight > fontSize. */
+    lineHeight: 18,
+    ...Platform.select({
+      android: {
+        includeFontPadding: false,
+        textAlignVertical: "center",
+      },
+      default: {},
+    }),
+  },
   hubDailyRecommendedBadgeText: {
-    fontSize: 11,
+    fontSize: 12,
     fontFamily: StitchFonts.bodySemi,
     color: StitchColors.primary,
     letterSpacing: 0.4,
@@ -1047,7 +1051,7 @@ export const revisionScreenStyles = StyleSheet.create({
     borderColor: "rgba(40, 108, 52, 0.35)",
   },
   hubDailyCompletedBadgeText: {
-    fontSize: 11,
+    fontSize: 12,
     fontFamily: StitchFonts.bodySemi,
     color: "#286C34",
     letterSpacing: 0.4,
@@ -1074,19 +1078,44 @@ export const revisionScreenStyles = StyleSheet.create({
   },
   /** Odstęp pod badge „Recommended” (absolute, nie zajmuje flow). */
   hubDailyTextBlockWithBadge: {
-    paddingTop: 38,
+    paddingTop: 42,
   },
-  /** „Words ready” + strzałka na pełną szerokość karty (poza wąskim blokiem tekstu). */
-  hubDailyMetaRow: {
+  /** Dolny rząd karty Daily: lewy dół (streak / done / label) + strzałka. */
+  hubDailyBottomRow: {
     marginTop: 14,
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-end",
     justifyContent: "space-between",
     width: "100%",
     alignSelf: "stretch",
     zIndex: 1,
+    gap: 10,
   },
-  /** Jak `hubCardDescSm`, bez flexGrow (inaczej rozpycha pionowo kartę z minHeight). */
+  hubDailyBottomLeft: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: "flex-start",
+    justifyContent: "flex-end",
+  },
+  hubDailyBottomArrow: {
+    marginBottom: 2,
+  },
+  /** Podpis streaku (tekst) — lewy dół jak wcześniej. */
+  hubDailyStreakRowBottom: {
+    gap: 4,
+    alignSelf: "stretch",
+    maxWidth: "100%",
+  },
+  /** Ten sam rytm co `hubSmallMetaText` (Recent / Quick): 13, bodySemi, onSurfaceVariant. */
+  hubDailyStreakCaption: {
+    fontSize: 13,
+    fontFamily: StitchFonts.bodySemi,
+    color: StitchColors.onSurfaceVariant,
+    lineHeight: 18,
+    textAlign: "left",
+    alignSelf: "stretch",
+    flexShrink: 1,
+  },
   hubDailyDesc: {
     fontSize: 13,
     fontFamily: StitchFonts.body,
@@ -1216,5 +1245,7 @@ export const revisionScreenStyles = StyleSheet.create({
     fontSize: 13,
     fontFamily: StitchFonts.bodySemi,
     color: StitchColors.onSurfaceVariant,
+    textAlign: "left",
+    flexShrink: 1,
   },
 });

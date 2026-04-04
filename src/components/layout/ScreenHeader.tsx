@@ -4,14 +4,14 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
-    ANDROID_RIPPLE_ICON_ROUND,
-    HIT_SLOP_COMFORT,
-    roundIconPressStyle,
+  ANDROID_RIPPLE_ICON_ROUND,
+  HIT_SLOP_COMFORT,
+  roundIconPressStyle,
 } from "@/src/components/ui/interaction";
 import {
-    StitchColors,
-    StitchFonts,
-    StitchRadius,
+  StitchColors,
+  StitchFonts,
+  StitchRadius,
 } from "@/src/theme/wordlyStitchTheme";
 
 export type ScreenHeaderProps = {
@@ -24,6 +24,15 @@ export type ScreenHeaderProps = {
   /** Gdy podane: przycisk wstecz po lewej (np. ekran stack). */
   onBackPress?: () => void;
   backAccessibilityLabel?: string;
+  /**
+   * `large` — główny tytuł ekranu (np. Ustawienia).
+   * `small` — kontekst nawigacji, żeby nie konkurował z dużym lematem (Daily Word, lista).
+   */
+  titleSize?: "large" | "small";
+  /**
+   * Bez tekstu tytułu — tylko wstecz + akcesoria (np. szczegóły słowa, gdzie lemat jest w treści).
+   */
+  hideTitle?: boolean;
 };
 
 /**
@@ -36,6 +45,8 @@ export function ScreenHeader({
   rightAccessory,
   onBackPress,
   backAccessibilityLabel = "Wróć",
+  titleSize = "large",
+  hideTitle = false,
 }: ScreenHeaderProps) {
   const insets = useSafeAreaInsets();
 
@@ -71,22 +82,30 @@ export function ScreenHeader({
         <View
           style={[styles.titleBlock, onBackPress && styles.titleBlockWithBack]}
         >
-          {titleEndAccessory ? (
-            <View style={styles.titleRow}>
+          {!hideTitle ? (
+            titleEndAccessory ? (
+              <View style={styles.titleRow}>
+                <Text
+                  style={[
+                    titleSize === "small" ? styles.titleSmall : styles.title,
+                    styles.titleShrink,
+                  ]}
+                  numberOfLines={2}
+                >
+                  {title}
+                </Text>
+                <View style={styles.titleEnd}>{titleEndAccessory}</View>
+              </View>
+            ) : (
               <Text
-                style={[styles.title, styles.titleShrink]}
+                style={titleSize === "small" ? styles.titleSmall : styles.title}
                 numberOfLines={2}
               >
                 {title}
               </Text>
-              <View style={styles.titleEnd}>{titleEndAccessory}</View>
-            </View>
-          ) : (
-            <Text style={styles.title} numberOfLines={2}>
-              {title}
-            </Text>
-          )}
-          {subtitle ? (
+            )
+          ) : null}
+          {!hideTitle && subtitle ? (
             <Text style={styles.subtitle} numberOfLines={2}>
               {subtitle}
             </Text>
@@ -152,6 +171,14 @@ const styles = StyleSheet.create({
     fontFamily: StitchFonts.display,
     color: StitchColors.onSurface,
     letterSpacing: -0.6,
+  },
+  /** Jak tytuł paska nawigacji — nie „gryzie się” z lematem 34px poniżej. */
+  titleSmall: {
+    fontSize: 17,
+    lineHeight: 22,
+    fontFamily: StitchFonts.headline,
+    color: StitchColors.onSurface,
+    letterSpacing: -0.28,
   },
   subtitle: {
     marginTop: 4,

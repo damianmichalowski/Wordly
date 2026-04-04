@@ -1,33 +1,29 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-    ActivityIndicator,
-    Pressable,
-    ScrollView,
-    Text,
-    View,
-} from "react-native";
+import { useRouter } from "expo-router";
+import { useCallback, useMemo } from "react";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ScreenHeader } from "@/src/components/layout/ScreenHeader";
 import {
-    ANDROID_RIPPLE_ICON_ROUND,
-    ANDROID_RIPPLE_PRIMARY,
-    HIT_SLOP_MINI,
-    primarySolidPressStyle,
-    roundIconPressStyle,
+  ANDROID_RIPPLE_ICON_ROUND,
+  ANDROID_RIPPLE_PRIMARY,
+  HIT_SLOP_MINI,
+  primarySolidPressStyle,
+  roundIconPressStyle,
 } from "@/src/components/ui/interaction";
+import { DailyWordScreenSkeleton } from "@/src/features/daily-word/components/DailyWordScreenSkeleton";
 import { dailyWordCardStyles as card } from "@/src/features/daily-word/styles/dailyWordCard.styles";
 import { groupSensesByPartOfSpeech } from "@/src/features/daily-word/utils/groupSensesByPartOfSpeech";
 import {
-    canPronounce,
-    speakWord,
+  canPronounce,
+  speakWord,
 } from "@/src/services/audio/pronunciationService";
 import { StitchColors } from "@/src/theme/wordlyStitchTheme";
+import { logUserAction } from "@/src/utils/userActionLog";
 import type { VocabularyWord } from "@/src/types/words";
 
-import { getWordDetails } from "../services/wordDetails.service";
+import { useWordDetailsScreenData } from "../hooks/useWordDetailsScreenData";
 import { wordDetailsStyles as styles } from "../styles/wordDetailsStyles";
 import type { WordDetails } from "../types/wordDetails.types";
 
@@ -50,56 +46,23 @@ function toSpeakPayload(details: WordDetails): VocabularyWord {
 export default function WordDetailsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{
-    wordId?: string | string[];
-    senseId?: string | string[];
-  }>();
-
-  const rawWordId = params.wordId ?? params.senseId;
-  const wordId =
-    typeof rawWordId === "string" ? rawWordId : (rawWordId?.[0] ?? "");
-
-  const [details, setDetails] = useState<WordDetails | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    if (!wordId) {
-      setError("Brak identyfikatora słowa.");
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await getWordDetails(wordId);
-      setDetails(data);
-    } catch (e) {
-      setDetails(null);
-      setError(
-        e instanceof Error ? e.message : "Nie udało się wczytać szczegółów.",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [wordId]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const { wordId, panel, refetch } = useWordDetailsScreenData();
 
   const posGroups = useMemo(() => {
-    const list = details?.senses ?? [];
+    if (panel.kind !== "content") {
+      return [];
+    }
+    const list = panel.details.senses ?? [];
     if (list.length === 0) {
       return [];
     }
     const ordered = [...list].sort((a, b) => a.sense_order - b.sense_order);
     return groupSensesByPartOfSpeech(ordered);
-  }, [details?.senses]);
+  }, [panel]);
 
   const speakPayload = useMemo(
-    () => (details ? toSpeakPayload(details) : null),
-    [details],
+    () => (panel.kind === "content" ? toSpeakPayload(panel.details) : null),
+    [panel],
   );
   const canSpeak = canPronounce(speakPayload);
 
@@ -107,88 +70,92 @@ export default function WordDetailsScreen() {
     if (!speakPayload) {
       return;
     }
+    logUserAction("button_press", {
+      target: "word_details_pronounce",
+      wordId: speakPayload.id,
+    });
     void speakWord(speakPayload);
   }, [speakPayload]);
 
-  const header = (
-    <ScreenHeader title="Słowo" onBackPress={() => router.back()} />
-  );
-
-  if (loading) {
+  const header = useMemo(() => {
+    const loaded = panel.kind === "content";
     return (
-      <View style={styles.screen}>
-        {header}
-        <ScrollView
-          style={styles.scroll}
-          contentContainerStyle={styles.scrollContentCentered}
-          keyboardShouldPersistTaps="handled"
-        >
-          <ActivityIndicator size="small" color={StitchColors.primary} />
-        </ScrollView>
-      </View>
+      <ScreenHeader
+        title={loaded ? "" : "Słowo"}
+        titleSize="small"
+        hideTitle={loaded}
+        onBackPress={() => {
+          logUserAction("button_press", {
+            target: "word_details_back",
+            wordId: wordId || "",
+          });
+          router.back();
+        }}
+      />
     );
-  }
+  }, [panel.kind, router, wordId]);
 
-  if (error || !details) {
-    return (
-      <View style={styles.screen}>
-        {header}
-        <ScrollView
-          style={styles.scroll}
-          contentContainerStyle={styles.scrollContentCentered}
-          keyboardShouldPersistTaps="handled"
+  const centerScroll =
+    panel.kind === "error" || panel.kind === "invalid_id";
+
+  const errorMessage =
+    panel.kind === "invalid_id" || panel.kind === "error"
+      ? panel.message
+      : null;
+
+  const ipa =
+    panel.kind === "content" ? panel.details.ipa?.trim() : undefined;
+
+  const scrollBody =
+    panel.kind === "loading_shell" ? (
+      <DailyWordScreenSkeleton />
+    ) : panel.kind === "invalid_id" || panel.kind === "error" ? (
+      <View style={styles.errorBlock}>
+        <Ionicons
+          name="cloud-offline-outline"
+          size={48}
+          color={StitchColors.outlineVariant}
+        />
+        <Text style={styles.titleError}>Nie udało się wczytać</Text>
+        <Text style={styles.muted}>{errorMessage}</Text>
+        <Pressable
+          android_ripple={ANDROID_RIPPLE_PRIMARY}
+          style={({ pressed }) => [
+            styles.retryButton,
+            primarySolidPressStyle(pressed, false),
+          ]}
+          onPress={() => {
+            logUserAction("button_press", {
+              target: "word_details_retry",
+              wordId: wordId || "",
+            });
+            void refetch();
+          }}
         >
-          <Ionicons
-            name="cloud-offline-outline"
-            size={48}
-            color={StitchColors.outlineVariant}
-          />
-          <Text style={styles.titleError}>Nie udało się wczytać</Text>
-          <Text style={styles.muted}>{error ?? "Brak danych."}</Text>
-          <Pressable
-            android_ripple={ANDROID_RIPPLE_PRIMARY}
-            style={({ pressed }) => [
-              styles.retryButton,
-              primarySolidPressStyle(pressed, false),
-            ]}
-            onPress={() => void load()}
-          >
-            <Text style={styles.retryButtonText}>Spróbuj ponownie</Text>
-          </Pressable>
-          <Pressable
-            android_ripple={ANDROID_RIPPLE_PRIMARY}
-            style={({ pressed }) => [
-              styles.ghostButton,
-              primarySolidPressStyle(pressed, false),
-            ]}
-            onPress={() => router.back()}
-          >
-            <Text style={styles.ghostButtonText}>Wróć</Text>
-          </Pressable>
-        </ScrollView>
+          <Text style={styles.retryButtonText}>Spróbuj ponownie</Text>
+        </Pressable>
+        <Pressable
+          android_ripple={ANDROID_RIPPLE_PRIMARY}
+          style={({ pressed }) => [
+            styles.ghostButton,
+            primarySolidPressStyle(pressed, false),
+          ]}
+          onPress={() => {
+            logUserAction("button_press", {
+              target: "word_details_back_error_state",
+              wordId: wordId || "",
+            });
+            router.back();
+          }}
+        >
+          <Text style={styles.ghostButtonText}>Wróć</Text>
+        </Pressable>
       </View>
-    );
-  }
-
-  const ipa = details.ipa?.trim();
-
-  return (
-    <View style={styles.screen}>
-      {header}
-
-      <ScrollView
-        style={styles.scroll}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-        showsVerticalScrollIndicator
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingBottom: 16 + insets.bottom },
-        ]}
-      >
+    ) : (
+      <>
         <View style={card.heroBlock}>
           <View style={card.heroTitleRow}>
-            <Text style={card.lemma}>{details.lemma}</Text>
+            <Text style={card.lemma}>{panel.details.lemma}</Text>
             <View style={card.heroMetaInline}>
               <Pressable
                 accessibilityRole="button"
@@ -217,9 +184,11 @@ export default function WordDetailsScreen() {
           <View style={card.heroIpaRow}>
             {ipa ? <Text style={card.ipa}>/{ipa}/</Text> : null}
             <View style={card.pillCefrCompact}>
-              <Text style={card.pillCefrCompactText}>{details.cefr.code}</Text>
+              <Text style={card.pillCefrCompactText}>
+                {panel.details.cefr.code}
+              </Text>
             </View>
-            {details.categories.map((c) => (
+            {panel.details.categories.map((c) => (
               <View key={c.id} style={card.pillCefrCompact}>
                 <Text style={card.pillCefrCompactText}>{c.name}</Text>
               </View>
@@ -237,10 +206,7 @@ export default function WordDetailsScreen() {
               return (
                 <View
                   key={s.sense_id}
-                  style={[
-                    card.senseBlock,
-                    showFollows && card.senseBlockFollows,
-                  ]}
+                  style={[card.senseBlock, showFollows && card.senseBlockFollows]}
                 >
                   {idx === 0 ? (
                     <Text style={card.sensePos}>{group.posName}</Text>
@@ -261,6 +227,23 @@ export default function WordDetailsScreen() {
             })}
           </View>
         ))}
+      </>
+    );
+
+  return (
+    <View style={styles.screen}>
+      {header}
+      <ScrollView
+        style={styles.scroll}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        showsVerticalScrollIndicator
+        contentContainerStyle={[
+          centerScroll ? styles.scrollContentCentered : styles.scrollContent,
+          { paddingBottom: 16 + insets.bottom },
+        ]}
+      >
+        {scrollBody}
       </ScrollView>
     </View>
   );

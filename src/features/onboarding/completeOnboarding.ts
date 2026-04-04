@@ -1,7 +1,8 @@
 import { Alert } from 'react-native'
 
 import type { OnboardingDraft } from '@/src/features/onboarding/OnboardingProvider'
-import { emitProfileSettingsSaved } from '@/src/events/profileSettingsEvents'
+import { invalidateAfterProfileOrSettingsChange } from '@/src/lib/query/invalidateAfterMutations'
+import { queryClient } from '@/src/lib/query/queryClient'
 import {
   invalidateTodayDailyWord,
   upsertUserProfileSettings,
@@ -50,7 +51,7 @@ export async function completeOnboardingFromDraft(
       draft.learningModeType === 'category' ? draft.selectedCategoryId ?? undefined : undefined,
   })
   await invalidateTodayDailyWord()
-  emitProfileSettingsSaved()
+  invalidateAfterProfileOrSettingsChange(queryClient)
   await setOnboardingComplete();
   markOnboardingComplete();
   await syncWidgetSnapshotFromApp();

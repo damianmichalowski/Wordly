@@ -1,3 +1,3 @@
-import RevisionSearchTabScreen from '@/src/features/revision/screens/RevisionSearchTabScreen';
+import LibraryTabScreen from '@/src/features/library/screens/LibraryTabScreen';
 
-export default RevisionSearchTabScreen;
+export default LibraryTabScreen;

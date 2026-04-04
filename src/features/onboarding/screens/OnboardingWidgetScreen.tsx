@@ -21,6 +21,7 @@ import {
 import { WidgetHomePreviewCard } from '@/src/components/ui/WidgetHomePreviewCard';
 import { useAppBootstrap } from '@/src/hooks/useAppBootstrap';
 import { StitchColors, StitchFonts, StitchRadius } from '@/src/theme/wordlyStitchTheme';
+import { logUserAction } from '@/src/utils/userActionLog';
 
 const PREVIEW_WORD = 'Hello';
 const PREVIEW_TRANSLATIONS = ['cześć'];
@@ -120,7 +121,12 @@ export default function OnboardingWidgetScreen() {
             (!canFinish || finishing) && styles.primaryButtonDisabled,
             primarySolidPressStyle(pressed, !canFinish || finishing),
           ]}
-          onPress={finish}
+          onPress={() => {
+            logUserAction('button_press', {
+              target: 'onboarding_finish_start_learning',
+            });
+            void finish();
+          }}
           disabled={!canFinish || finishing}>
           {finishing ? (
             <ActivityIndicator color={StitchColors.onPrimary} />

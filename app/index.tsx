@@ -1,6 +1,7 @@
-import { Redirect } from 'expo-router';
+import { Redirect } from "expo-router";
 
-import { useAppBootstrap } from '@/src/hooks/useAppBootstrap';
+import { BootstrapRouteShell } from "@/src/components/bootstrap/BootstrapRouteShell";
+import { useAppBootstrap } from "@/src/hooks/useAppBootstrap";
 
 /**
  * Route: `/`: onboarding vs główne zakładki po bootstrapie.
@@ -10,7 +11,7 @@ export default function IndexRoute() {
   const { isReady, hasOnboarded, isAuthenticated } = useAppBootstrap();
 
   if (!isReady) {
-    return null;
+    return <BootstrapRouteShell />;
   }
 
   if (!hasOnboarded) {

@@ -1,18 +1,21 @@
 import { Ionicons } from "@expo/vector-icons";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import { useFocusEffect } from "@react-navigation/native";
 import { useRouter } from "expo-router";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
-  Modal,
   Pressable,
   ScrollView,
   Text,
   View,
 } from "react-native";
+import Animated, { ZoomInEasyDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ScreenHeader } from "@/src/components/layout/ScreenHeader";
+import { PageSheetModal } from "@/src/components/ui/PageSheetModal";
 import { CenteredUnlockCtaCard } from "@/src/components/ui/CenteredUnlockCtaCard";
+import { TransportRetryMessage } from "@/src/components/ui/TransportRetryMessage";
 import {
   ANDROID_RIPPLE_PRIMARY,
   ANDROID_RIPPLE_SURFACE,
@@ -21,6 +24,7 @@ import {
 } from "@/src/components/ui/interaction";
 import type { RevisionSessionConfig } from "@/src/types/revisionSession";
 import { StitchColors } from "@/src/theme/wordlyStitchTheme";
+import { logUserAction } from "@/src/utils/userActionLog";
 
 import { revisionScreenStyles as styles } from "../revisionScreenStyles";
 
@@ -32,15 +36,34 @@ export type RevisionHubCounts = {
 
 type RevisionHubProps = {
   knownTotal: number;
+  /** Gdy false — liczniki jeszcze z RPC; nie pokazuj stanu „0 słów / odblokuj”. */
+  hubStatsReady?: boolean;
+  /**
+   * Tylko gdy `get_revision_hub_stats` zwróciło `knownCount === 0` — nie opieraj na samym `knownTotal`
+   * ze state (race: `isFetched` zanim effect zaktualizuje `hubCounts`).
+   */
+  unlockEmptyCtaConfirmed?: boolean;
   counts: RevisionHubCounts;
   /** Ukończono dziś sesję Daily Review (lokalna data kalendarza). */
   dailyReviewCompletedToday?: boolean;
+  /** Bieżący streak Daily Review (dni z rzędu). */
+  dailyReviewStreak?: number;
   onSelectSession: (config: RevisionSessionConfig) => void;
   /** Gdy brak: zakładka Revision Hub (bez cofania do biblioteki). */
   onBackToLibrary?: () => void;
+  /** Pierwszy fetch hub stats zakończony błędem — banner z retry zamiast mylących zer. */
+  hubStatsLoadError?: boolean;
+  hubStatsRetryBusy?: boolean;
+  onRetryHubStats?: () => void;
 };
 
 const QUICK_SIZES = [5, 10, 20] as const;
+
+/** Wejście ikony streaku: jakby „zapłonęła” (od dołu + spring). */
+const STREAK_FLAME_ENTERING = ZoomInEasyDown.springify()
+  .stiffness(260)
+  .damping(15)
+  .mass(0.55);
 
 type HubIntroSheet =
   | { type: "daily" }
@@ -120,25 +143,37 @@ function getHubIntro(
 
 export function RevisionHub({
   knownTotal,
+  hubStatsReady = true,
+  unlockEmptyCtaConfirmed = false,
   counts,
   dailyReviewCompletedToday = false,
+  dailyReviewStreak = 0,
   onSelectSession,
   onBackToLibrary,
+  hubStatsLoadError = false,
+  hubStatsRetryBusy = false,
+  onRetryHubStats,
 }: RevisionHubProps) {
   const router = useRouter();
   const [sheet, setSheet] = useState<HubIntroSheet | null>(null);
   const [quickCount, setQuickCount] = useState<5 | 10 | 20>(10);
+  const [streakFlameAnimKey, setStreakFlameAnimKey] = useState(0);
+  const skipStreakFlameReplayOnFirstFocus = useRef(true);
   const insets = useSafeAreaInsets();
 
   const dailyUnlocked = knownTotal >= 1;
   const recentUnlocked = knownTotal >= 1;
   const quickUnlocked = knownTotal >= 5;
-  const dailyEnabled = dailyUnlocked && counts.daily > 0;
+  const dailyEnabled =
+    hubStatsReady && dailyUnlocked && counts.daily > 0;
   /** Ukończono dziś Daily Review i nie ma już słów w kolejce, pokazujemy „Completed” / „Done for today”. */
   const dailyReviewDoneForToday =
     dailyReviewCompletedToday && counts.daily === 0;
 
   const dailyWordsReadyLabel = useMemo(() => {
+    if (!hubStatsReady) {
+      return "…";
+    }
     if (!dailyUnlocked) {
       return "Odblokuj: naucz się 1 słowa w Daily Word";
     }
@@ -146,27 +181,72 @@ export function RevisionHub({
       return "Brak słów do powtórki dziś";
     }
     return counts.daily === 1 ? "1 word ready" : `${counts.daily} words ready`;
-  }, [dailyUnlocked, counts.daily]);
+  }, [hubStatsReady, dailyUnlocked, counts.daily]);
+
+  /** Fragment po przecinku przy „Keep your streak alive” (ten sam sens co dolny label słów). */
+  const streakWordsReadyFragment = useMemo(() => {
+    if (!hubStatsReady) {
+      return "";
+    }
+    if (!dailyUnlocked) {
+      return "";
+    }
+    if (counts.daily === 0) {
+      return "no words due today";
+    }
+    return counts.daily === 1 ? "1 word ready" : `${counts.daily} words ready`;
+  }, [hubStatsReady, dailyUnlocked, counts.daily]);
+
+  const showDailyStreakRow =
+    hubStatsReady && dailyUnlocked && !dailyReviewCompletedToday;
+
+  /**
+   * Ikona + liczba u góry karty Daily, gdy tryb jest odblokowany — w tym:
+   * Recommended, „Start next session” (ukończono dziś, ale są jeszcze słowa), Completed.
+   */
+  const showTopStreakInline = hubStatsReady && dailyUnlocked;
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!showTopStreakInline) {
+        return;
+      }
+      if (skipStreakFlameReplayOnFirstFocus.current) {
+        skipStreakFlameReplayOnFirstFocus.current = false;
+        return;
+      }
+      setStreakFlameAnimKey((k) => k + 1);
+    }, [showTopStreakInline]),
+  );
 
   const recentLabel = useMemo(() => {
+    if (!hubStatsReady) {
+      return "…";
+    }
     if (!recentUnlocked) {
       return "Learn your first word to unlock this mode";
     }
     return counts.recent === 1 ? "1 word" : `${counts.recent} words`;
-  }, [recentUnlocked, counts.recent]);
+  }, [hubStatsReady, recentUnlocked, counts.recent]);
 
   const quickLabel = useMemo(() => {
+    if (!hubStatsReady) {
+      return "…";
+    }
     if (!quickUnlocked) {
       return "Unlocks after learning 5 words";
     }
     return "5, 10, or 20 words";
-  }, [quickUnlocked]);
+  }, [hubStatsReady, quickUnlocked]);
 
   const openSheet = useCallback((next: HubIntroSheet) => {
     setSheet(next);
   }, []);
 
   const closeSheet = useCallback(() => {
+    logUserAction("button_press", {
+      target: "revision_hub_session_intro_sheet_close",
+    });
     setSheet(null);
   }, []);
 
@@ -174,6 +254,10 @@ export function RevisionHub({
     if (!dailyEnabled) {
       return;
     }
+    logUserAction("button_press", {
+      target: "revision_hub_open_session_intro",
+      kind: "daily",
+    });
     openSheet({ type: "daily" });
   }, [dailyEnabled, openSheet]);
 
@@ -181,6 +265,10 @@ export function RevisionHub({
     if (!recentUnlocked) {
       return;
     }
+    logUserAction("button_press", {
+      target: "revision_hub_open_session_intro",
+      kind: "recent",
+    });
     openSheet({ type: "recent" });
   }, [recentUnlocked, openSheet]);
 
@@ -188,6 +276,10 @@ export function RevisionHub({
     if (!quickUnlocked) {
       return;
     }
+    logUserAction("button_press", {
+      target: "revision_hub_open_session_intro",
+      kind: "quick",
+    });
     setQuickCount(defaultQuickCount(knownTotal));
     setSheet({ type: "quick" });
   }, [quickUnlocked, knownTotal]);
@@ -229,6 +321,9 @@ export function RevisionHub({
       : getHubIntro(sheet, counts, knownTotal, dailyReviewCompletedToday);
 
   const goToDailyWord = useCallback(() => {
+    logUserAction("button_press", {
+      target: "revision_hub_unlock_cta_daily_word",
+    });
     router.push("/(tabs)/home");
   }, [router]);
 
@@ -251,7 +346,21 @@ export function RevisionHub({
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {knownTotal === 0 ? (
+        {hubStatsLoadError && onRetryHubStats ? (
+          <TransportRetryMessage
+            variant="hubBanner"
+            showIcon={false}
+            isRetrying={hubStatsRetryBusy}
+            onRetry={() => {
+              logUserAction("button_press", {
+                target: "revision_hub_stats_retry",
+              });
+              onRetryHubStats();
+            }}
+          />
+        ) : null}
+
+        {unlockEmptyCtaConfirmed ? (
           <CenteredUnlockCtaCard
             icon="lock-closed-outline"
             title="Odblokuj powtórki"
@@ -272,7 +381,8 @@ export function RevisionHub({
                 dailyUnlocked &&
                   dailyReviewDoneForToday &&
                   styles.hubDailyFeaturedCompleted,
-                !dailyEnabled && styles.buttonDisabled,
+                /** Nie przyciemniaj karty, dopóki nie znamy liczników — unikamy migania „disabled”. */
+                hubStatsReady && !dailyEnabled && styles.buttonDisabled,
                 surfacePressStyle(pressed, !dailyEnabled),
               ]}
               onPress={openDailySheet}
@@ -281,38 +391,61 @@ export function RevisionHub({
               accessibilityState={{ disabled: !dailyEnabled }}
             >
               <View
-                style={[
-                  styles.hubDailyRecommendedBadge,
-                  dailyUnlocked &&
-                    dailyReviewDoneForToday &&
-                    styles.hubDailyCompletedBadge,
-                ]}
+                style={styles.hubDailyTopBadgesRow}
                 pointerEvents="none"
                 accessibilityElementsHidden
                 importantForAccessibility="no-hide-descendants"
               >
                 {dailyUnlocked && dailyReviewDoneForToday ? (
-                  <>
+                  <View
+                    style={[
+                      styles.hubDailyRecommendedBadge,
+                      styles.hubDailyCompletedBadge,
+                    ]}
+                  >
                     <Ionicons
                       name="checkmark-circle"
-                      size={13}
+                      size={15}
                       color="#286C34"
                     />
                     <Text style={styles.hubDailyCompletedBadgeText}>
                       Completed
                     </Text>
-                  </>
+                  </View>
                 ) : dailyUnlocked && counts.daily > 0 ? (
-                  <>
+                  <View style={styles.hubDailyRecommendedBadge}>
                     <Ionicons
                       name="sparkles"
-                      size={13}
+                      size={15}
                       color={StitchColors.primary}
                     />
                     <Text style={styles.hubDailyRecommendedBadgeText}>
                       Recommended
                     </Text>
-                  </>
+                  </View>
+                ) : null}
+                {showTopStreakInline ? (
+                  <View
+                    style={styles.hubDailyStreakInline}
+                    accessibilityLabel={`Streak ${dailyReviewStreak}`}
+                  >
+                    <Animated.View
+                      key={streakFlameAnimKey}
+                      entering={STREAK_FLAME_ENTERING}
+                      style={styles.hubDailyStreakFlameWrap}
+                    >
+                      <Ionicons
+                        name="flame"
+                        size={20}
+                        color="#D32F2F"
+                      />
+                    </Animated.View>
+                    <View style={styles.hubDailyStreakCountWrap}>
+                      <Text style={styles.hubDailyStreakTagNumber}>
+                        {dailyReviewStreak}
+                      </Text>
+                    </View>
+                  </View>
                 ) : null}
               </View>
               <View style={styles.hubDailyIconDecor} pointerEvents="none">
@@ -330,27 +463,42 @@ export function RevisionHub({
                   Smart review based on how memory works
                 </Text>
               </View>
-              <View style={styles.hubDailyMetaRow}>
-                {dailyUnlocked && dailyReviewDoneForToday ? (
-                  <View style={styles.hubDailyDoneRow}>
-                    <Ionicons
-                      name="checkmark-circle"
-                      size={20}
-                      color="#286C34"
-                    />
-                    <Text style={styles.hubDailyDoneLabel}>
-                      Done for today
+              <View style={styles.hubDailyBottomRow}>
+                <View style={styles.hubDailyBottomLeft}>
+                  {showDailyStreakRow ? (
+                    <View style={styles.hubDailyStreakRowBottom}>
+                      <Text style={styles.hubDailyStreakCaption}>
+                        Keep your streak alive, {streakWordsReadyFragment}
+                      </Text>
+                    </View>
+                  ) : dailyUnlocked && dailyReviewDoneForToday ? (
+                    <View style={styles.hubDailyDoneRow}>
+                      <Ionicons
+                        name="checkmark-circle"
+                        size={20}
+                        color="#286C34"
+                      />
+                      <Text style={styles.hubDailyDoneLabel}>
+                        Done for today
+                      </Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.hubSmallMetaText}>
+                      {dailyWordsReadyLabel}
                     </Text>
-                  </View>
-                ) : (
-                  <Text style={styles.hubSmallMetaText}>
-                    {dailyWordsReadyLabel}
-                  </Text>
-                )}
+                  )}
+                </View>
                 <Ionicons
-                  name={dailyUnlocked ? "arrow-forward" : "lock-closed-outline"}
+                  name={
+                    !hubStatsReady
+                      ? "ellipsis-horizontal"
+                      : dailyUnlocked
+                        ? "arrow-forward"
+                        : "lock-closed-outline"
+                  }
                   size={18}
                   color={StitchColors.onSurfaceVariant}
+                  style={styles.hubDailyBottomArrow}
                 />
               </View>
             </Pressable>
@@ -358,17 +506,19 @@ export function RevisionHub({
 
           <View style={styles.hubTileFull}>
             <Pressable
-              disabled={!recentUnlocked}
+              disabled={!hubStatsReady || !recentUnlocked}
               android_ripple={ANDROID_RIPPLE_SURFACE}
               style={({ pressed }) => [
                 styles.hubCardWhite,
-                !recentUnlocked && styles.buttonDisabled,
-                surfacePressStyle(pressed, !recentUnlocked),
+                hubStatsReady && !recentUnlocked && styles.buttonDisabled,
+                surfacePressStyle(pressed, !hubStatsReady || !recentUnlocked),
               ]}
               onPress={openRecentSheet}
               accessibilityRole="button"
               accessibilityLabel="Recently Learned"
-              accessibilityState={{ disabled: !recentUnlocked }}
+              accessibilityState={{
+                disabled: !hubStatsReady || !recentUnlocked,
+              }}
             >
               <View
                 style={[
@@ -399,17 +549,19 @@ export function RevisionHub({
 
           <View style={styles.hubTileFull}>
             <Pressable
-              disabled={!quickUnlocked}
+              disabled={!hubStatsReady || !quickUnlocked}
               android_ripple={ANDROID_RIPPLE_SURFACE}
               style={({ pressed }) => [
                 styles.hubCardWhite,
-                !quickUnlocked && styles.buttonDisabled,
-                surfacePressStyle(pressed, !quickUnlocked),
+                hubStatsReady && !quickUnlocked && styles.buttonDisabled,
+                surfacePressStyle(pressed, !hubStatsReady || !quickUnlocked),
               ]}
               onPress={openQuickSheet}
               accessibilityRole="button"
               accessibilityLabel="Quick Practice"
-              accessibilityState={{ disabled: !quickUnlocked }}
+              accessibilityState={{
+                disabled: !hubStatsReady || !quickUnlocked,
+              }}
             >
               <View
                 style={[
@@ -440,12 +592,7 @@ export function RevisionHub({
         </View>
       </ScrollView>
 
-      <Modal
-        visible={sheet !== null}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={closeSheet}
-      >
+      <PageSheetModal visible={sheet !== null} onRequestClose={closeSheet}>
         <View style={styles.listScreen}>
           {intro ? (
             <>
@@ -485,7 +632,13 @@ export function RevisionHub({
                                 !enabled && styles.buttonDisabled,
                                 surfacePressStyle(pressed, !enabled),
                               ]}
-                              onPress={() => setQuickCount(n)}
+                              onPress={() => {
+                                logUserAction("button_press", {
+                                  target: "revision_hub_quick_size",
+                                  size: n,
+                                });
+                                setQuickCount(n);
+                              }}
                               accessibilityRole="button"
                               accessibilityState={{
                                 selected: selected && enabled,
@@ -583,7 +736,7 @@ export function RevisionHub({
             </>
           ) : null}
         </View>
-      </Modal>
+      </PageSheetModal>
     </View>
   );
 }
