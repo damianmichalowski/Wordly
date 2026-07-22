@@ -102,7 +102,7 @@ The catalog has 4000+ English words with Polish translations, IPA and example se
 <table>
   <tr>
     <td width="38%" align="center">
-      <img src="docs/showcase/04-widget-promo.png" alt="Widget" width="240" />
+      <img src="docs/showcase/12-widget-home.jpg" alt="Widget on the home screen" width="240" />
     </td>
     <td width="62%">
       <h4>The word waits on your home screen</h4>
