@@ -1,0 +1,57 @@
+{
+  "mode": "cefr",
+  "target_language": "English",
+  "target_language_code": "en",
+  "source_language": "Polish",
+  "source_language_code": "pl",
+  "default_level": "B2",
+  "batch_size": 30,
+  "max_batches_per_run": 1,
+  "levels": [
+    "A1",
+    "A2",
+    "B1",
+    "B2",
+    "C1",
+    "C2"
+  ],
+  "targets": {
+    "A1": 300,
+    "A2": 500,
+    "B1": 800,
+    "B2": 800,
+    "C1": 400,
+    "C2": 300
+  },
+  "models": {
+    "lemma_planner": "gpt-5-mini",
+    "sense_explorer": "gpt-5-mini",
+    "json_repair": "gpt-5-nano"
+  },
+  "limits": {
+    "excluded_lemmas_limit": 2000,
+    "max_candidates_per_lemma": 8,
+    "max_final_senses_per_lemma": 5,
+    "examples_per_sense": 2
+  },
+  "prices_per_1m_tokens": {
+    "gpt-5-mini": {
+      "input": 0.25,
+      "output": 2.0
+    },
+    "gpt-5-nano": {
+      "input": 0.05,
+      "output": 0.4
+    }
+  },
+  "import": {
+    "enabled_by_default": false,
+    "cefr_existing_policy": "skip_existing",
+    "category_existing_policy": "attach_category_only"
+  },
+  "dedupe": {
+    "source_of_truth": "database",
+    "scope": "all_cefr_levels_for_target_language",
+    "local_cache": "fallback_only"
+  }
+}

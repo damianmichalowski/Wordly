@@ -1,0 +1,471 @@
+{
+  "mode": "category",
+  "target_language": "English",
+  "target_language_code": "en",
+  "source_language": "Polish",
+  "source_language_code": "pl",
+  "default_category": "business",
+  "batch_size": 30,
+  "max_batches_per_run": 1,
+  "default_target": 100,
+  "default_level_distribution": {
+    "A1": 10,
+    "A2": 25,
+    "B1": 35,
+    "B2": 25,
+    "C1": 5,
+    "C2": 0
+  },
+  "categories": {
+    "business": {
+      "target_words": 150,
+      "level_distribution": {
+        "A1": 5,
+        "A2": 15,
+        "B1": 35,
+        "B2": 30,
+        "C1": 12,
+        "C2": 3
+      },
+      "mix": {
+        "core": 55,
+        "adjacent": 20,
+        "specialized": 25
+      },
+      "profile": "Business = help the learner work in companies, meetings, sales, operations and professional communication.",
+      "prefer": [
+        "invoice",
+        "revenue",
+        "margin",
+        "supplier",
+        "stakeholder",
+        "deadline",
+        "proposal",
+        "budget",
+        "contract",
+        "negotiation",
+        "approval",
+        "strategy",
+        "target",
+        "performance",
+        "meeting",
+        "report",
+        "client",
+        "shipment"
+      ],
+      "avoid": [
+        "buzzwords",
+        "investor jargon without broad business value",
+        "rare MBA-style terminology"
+      ],
+      "level_policy": [
+        "Business should mostly live in B1-B2 with a useful C1 layer for professional communication.",
+        "A1 should be minimal because very basic words are already covered by CEFR core."
+      ]
+    },
+    "travel": {
+      "target_words": 120,
+      "level_distribution": {
+        "A1": 18,
+        "A2": 27,
+        "B1": 33,
+        "B2": 20,
+        "C1": 2,
+        "C2": 0
+      },
+      "mix": {
+        "core": 60,
+        "adjacent": 20,
+        "specialized": 20
+      },
+      "profile": "Travel = help the learner travel independently before, during and after a trip, including real problems and service situations.",
+      "prefer": [
+        "airport",
+        "flight",
+        "gate",
+        "luggage",
+        "passport",
+        "customs",
+        "booking",
+        "reservation",
+        "ticket",
+        "platform",
+        "route",
+        "delay",
+        "transfer",
+        "accommodation",
+        "check-in",
+        "refund",
+        "directions",
+        "emergency",
+        "transport",
+        "hotel/service problems",
+        "accessibility",
+        "lost items"
+      ],
+      "avoid": [
+        "poetic travel words",
+        "tourism marketing words",
+        "rare geography terms",
+        "broad environment words unless directly useful during travel",
+        "tech/web words unless directly needed for booking or check-in",
+        "weak holiday-only words"
+      ],
+      "level_policy": [
+        "Travel may contain many A1-A2 survival words, but after the first 80-100 words prefer B1-B2 practical terms.",
+        "C1-C2 should be almost zero unless the word is highly practical for travel.",
+        "Do not fill with low-value C1-C2 words just to look advanced."
+      ]
+    },
+    "technology": {
+      "target_words": 130,
+      "level_distribution": {
+        "A1": 8,
+        "A2": 20,
+        "B1": 35,
+        "B2": 27,
+        "C1": 8,
+        "C2": 2
+      },
+      "mix": {
+        "core": 55,
+        "adjacent": 20,
+        "specialized": 25
+      },
+      "profile": "Technology = help the learner understand modern tech, apps, devices, digital services and support contexts.",
+      "prefer": [
+        "device",
+        "account",
+        "password",
+        "update",
+        "backup",
+        "cloud",
+        "network",
+        "privacy",
+        "security",
+        "access",
+        "feature",
+        "bug",
+        "file",
+        "storage",
+        "upload",
+        "download",
+        "settings",
+        "notification"
+      ],
+      "avoid": [
+        "deep engineering jargon unless common in everyday tech work or product communication",
+        "brand names",
+        "random library names"
+      ],
+      "level_policy": [
+        "Technology should lean B1-B2 because useful tech vocabulary is often above basic English.",
+        "Keep C1-C2 small and practical."
+      ]
+    },
+    "health": {
+      "target_words": 120,
+      "level_distribution": {
+        "A1": 15,
+        "A2": 30,
+        "B1": 35,
+        "B2": 17,
+        "C1": 3,
+        "C2": 0
+      },
+      "mix": {
+        "core": 60,
+        "adjacent": 20,
+        "specialized": 20
+      },
+      "profile": "Health = help the learner talk to doctors, understand symptoms, treatment, pharmacy and basic medical information.",
+      "prefer": [
+        "symptom",
+        "pain",
+        "fever",
+        "appointment",
+        "prescription",
+        "dose",
+        "treatment",
+        "allergy",
+        "injury",
+        "infection",
+        "diagnosis",
+        "medicine",
+        "pharmacy",
+        "blood pressure",
+        "emergency",
+        "insurance"
+      ],
+      "avoid": [
+        "rare Latin disease names",
+        "diagnostic jargon that a normal patient will not hear",
+        "high-stakes specialist terminology unless very common"
+      ],
+      "level_policy": [
+        "Health can include many A2-B1 patient communication words.",
+        "Specialized medical words are allowed only when useful for real doctor/pharmacy interactions."
+      ]
+    },
+    "education": {
+      "target_words": 120,
+      "level_distribution": {
+        "A1": 10,
+        "A2": 25,
+        "B1": 35,
+        "B2": 25,
+        "C1": 5,
+        "C2": 0
+      },
+      "mix": {
+        "core": 60,
+        "adjacent": 20,
+        "specialized": 20
+      },
+      "profile": "Education = help the learner study, communicate at school/university and understand learning contexts.",
+      "prefer": [
+        "assignment",
+        "lecture",
+        "course",
+        "grade",
+        "exam",
+        "deadline",
+        "degree",
+        "scholarship",
+        "attendance",
+        "feedback",
+        "curriculum",
+        "tuition",
+        "campus",
+        "research",
+        "source",
+        "citation"
+      ],
+      "avoid": [
+        "rare pedagogy theory unless useful for real student/teacher communication",
+        "university bureaucracy that is too country-specific"
+      ],
+      "level_policy": [
+        "Education should mostly be A2-B2.",
+        "C1 terms are allowed for academic work if useful, but C2 should be avoided for this category."
+      ]
+    },
+    "law": {
+      "target_words": 180,
+      "level_distribution": {
+        "A1": 0,
+        "A2": 5,
+        "B1": 20,
+        "B2": 40,
+        "C1": 25,
+        "C2": 10
+      },
+      "mix": {
+        "core": 50,
+        "adjacent": 20,
+        "specialized": 30
+      },
+      "profile": "Law = help the learner understand legal work, client communication, courts, contracts and legal documents.",
+      "prefer": [
+        "court",
+        "claim",
+        "appeal",
+        "evidence",
+        "hearing",
+        "judgment",
+        "liability",
+        "breach",
+        "contract",
+        "clause",
+        "party",
+        "obligation",
+        "settlement",
+        "defendant",
+        "claimant",
+        "attorney",
+        "statute",
+        "regulation",
+        "consent",
+        "compliance",
+        "enforcement"
+      ],
+      "avoid": [
+        "rare doctrinal theory unless genuinely useful for legal practice or reading legal documents",
+        "country-specific procedural terms unless broadly useful",
+        "Latin maxims unless common in legal English"
+      ],
+      "level_policy": [
+        "Law is a professional category: most words should be B2-C1, with a smaller B1 practical layer.",
+        "A1-A2 should be almost absent except unavoidable general words used in legal settings.",
+        "C2 is allowed more than in lifestyle categories, but only for useful legal reading/work vocabulary."
+      ]
+    },
+    "finance": {
+      "target_words": 150,
+      "level_distribution": {
+        "A1": 5,
+        "A2": 15,
+        "B1": 30,
+        "B2": 35,
+        "C1": 12,
+        "C2": 3
+      },
+      "mix": {
+        "core": 55,
+        "adjacent": 20,
+        "specialized": 25
+      },
+      "profile": "Finance = help the learner handle money, banking, accounting, payments and financial documents.",
+      "prefer": [
+        "account",
+        "transfer",
+        "fee",
+        "balance",
+        "loan",
+        "interest",
+        "invoice",
+        "tax",
+        "payment",
+        "refund",
+        "budget",
+        "revenue",
+        "expense",
+        "profit",
+        "loss",
+        "debt",
+        "currency",
+        "exchange",
+        "statement"
+      ],
+      "avoid": [
+        "obscure derivatives jargon unless category is specifically trading/investing",
+        "rare accounting-only labels unless useful in documents"
+      ],
+      "level_policy": [
+        "Finance should lean B1-B2, with a meaningful C1 layer for documents and professional contexts."
+      ]
+    },
+    "software_development": {
+      "target_words": 180,
+      "level_distribution": {
+        "A1": 0,
+        "A2": 10,
+        "B1": 25,
+        "B2": 40,
+        "C1": 20,
+        "C2": 5
+      },
+      "mix": {
+        "core": 50,
+        "adjacent": 20,
+        "specialized": 30
+      },
+      "profile": "Software Development = help the learner work as a software developer in English.",
+      "prefer": [
+        "deploy",
+        "branch",
+        "merge",
+        "commit",
+        "endpoint",
+        "request",
+        "response",
+        "dependency",
+        "environment",
+        "release",
+        "issue",
+        "ticket",
+        "backlog",
+        "component",
+        "repository",
+        "authentication",
+        "authorization",
+        "validation",
+        "refactor"
+      ],
+      "avoid": [
+        "very rare framework internals",
+        "obscure algorithms unless common at work",
+        "random library names",
+        "overly academic computer science terms unless useful in developer communication"
+      ],
+      "level_policy": [
+        "Software development should mostly be B1-C1.",
+        "A1 should be avoided because the category should feel professional, not basic CEFR.",
+        "C2 is allowed only for genuinely useful expert terms."
+      ]
+    },
+    "trading": {
+      "target_words": 160,
+      "level_distribution": {
+        "A1": 0,
+        "A2": 10,
+        "B1": 25,
+        "B2": 40,
+        "C1": 20,
+        "C2": 5
+      },
+      "mix": {
+        "core": 45,
+        "adjacent": 20,
+        "specialized": 35
+      },
+      "profile": "Trading = help the learner understand markets, investing and trading communication.",
+      "prefer": [
+        "asset",
+        "stock",
+        "bond",
+        "order",
+        "spread",
+        "volatility",
+        "liquidity",
+        "leverage",
+        "margin",
+        "portfolio",
+        "position",
+        "risk",
+        "return",
+        "trend",
+        "breakout",
+        "support",
+        "resistance",
+        "stop-loss",
+        "dividend"
+      ],
+      "avoid": [
+        "meme-trading slang",
+        "ultra-obscure indicators",
+        "platform-specific slang"
+      ],
+      "level_policy": [
+        "Trading is intentionally more specialized than ordinary finance.",
+        "Most words should be B2-C1, with some B1 foundations."
+      ]
+    }
+  },
+  "models": {
+    "lemma_planner": "gpt-5-mini",
+    "sense_explorer": "gpt-5-mini",
+    "json_repair": "gpt-5-nano"
+  },
+  "limits": {
+    "excluded_lemmas_limit": 2000,
+    "max_candidates_per_lemma": 8,
+    "max_final_senses_per_lemma": 5,
+    "examples_per_sense": 2
+  },
+  "prices_per_1m_tokens": {
+    "gpt-5-mini": {
+      "input": 0.25,
+      "output": 2.0
+    },
+    "gpt-5-nano": {
+      "input": 0.05,
+      "output": 0.4
+    }
+  },
+  "import": {
+    "enabled_by_default": false,
+    "cefr_existing_policy": "skip_existing",
+    "category_existing_policy": "attach_category_only"
+  }
+}

@@ -1,0 +1,15 @@
+# generated Wordly automation outputs
+datasets/json/*.json
+datasets/cefr/*.csv
+datasets/category/*.csv
+datasets/previews/*.md
+datasets/reports/*
+datasets/intermediate/*
+datasets/cache/*
+datasets/candidates/*.json
+datasets/state/*.json
+
+# local/editor files
+.DS_Store
+__MACOSX/
+.env

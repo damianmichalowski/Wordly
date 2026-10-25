@@ -2,6 +2,7 @@
 
 # dependencies
 node_modules/
+vendor/bundle/
 
 # Expo
 .expo/
@@ -68,9 +69,12 @@ coverage/
 .cursor/mcp.json
 **/.cursor/mcp.json
 
-# generated native folders
+# generated native folders (utwórz: `npx expo prebuild`; wtedy `ios/*.xcworkspace`)
 /ios
 /android
+
+# Seeding words 
+automation/
 
 # Supabase (lokalne artefakty CLI / nigdy do repo)
 supabase/.branches/

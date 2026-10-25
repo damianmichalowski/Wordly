@@ -1,0 +1,16 @@
+{
+  "name": "wordly-automation-agentic",
+  "version": "2.5.0",
+  "private": true,
+  "scripts": {
+    "automation": "tsx scripts/automation.ts",
+    "automation:full": "tsx scripts/automation-full.ts",
+    "coverage:category": "tsx scripts/category-coverage.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.8.0"
+  }
+}
