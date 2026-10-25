@@ -1242,7 +1242,7 @@ export function useRevisionHubSession() {
 
         try {
           const result = await recordWordDifficultDontKnow(card.id);
-          if (result.isDifficult === true && card.isDifficult !== true) {
+          if (result.isDifficult === true) {
             emitWordDifficultToggled({ wordId: card.id, isDifficult: true });
             emitWordProgressUpdated();
             void queryClient.invalidateQueries({
@@ -1273,8 +1273,9 @@ export function useRevisionHubSession() {
         } catch (e) {
           const message =
             e instanceof Error ? e.message : "Failed to save answer";
-          const wasMarked = card.isDifficult === true;
-          if (isDifficultAfter && !wasMarked) {
+          // W tej gałęzi karta nie była trudna przed odpowiedzią
+          // (przypadek isDifficult === true obsługuje wcześniejszy else if).
+          if (isDifficultAfter) {
             patchWordDetailsIsDifficult(queryClient, card.id, false);
           }
           setState((s) => ({
@@ -1286,7 +1287,7 @@ export function useRevisionHubSession() {
                 ? {
                     ...w,
                     difficultDontKnowCounter: previousDontKnowCounter,
-                    isDifficult: wasMarked ? true : undefined,
+                    isDifficult: undefined,
                   }
                 : w,
             ),
@@ -1295,7 +1296,7 @@ export function useRevisionHubSession() {
                 ? {
                     ...w,
                     difficultDontKnowCounter: previousDontKnowCounter,
-                    isDifficult: wasMarked ? true : undefined,
+                    isDifficult: undefined,
                   }
                 : w,
             ),

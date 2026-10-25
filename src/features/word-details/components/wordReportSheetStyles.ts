@@ -47,7 +47,7 @@ export const wordReportSheetStyles = StyleSheet.create({
     height: 22,
     borderRadius: 11,
     borderWidth: 2,
-    borderColor: StitchColors.outline,
+    borderColor: StitchColors.onSurfaceVariant,
     alignItems: "center",
     justifyContent: "center",
   },
