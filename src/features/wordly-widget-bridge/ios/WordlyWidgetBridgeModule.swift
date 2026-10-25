@@ -2,7 +2,7 @@ import ExpoModulesCore
 import Foundation
 import WidgetKit
 
-private let appGroupId = "group.com.wordly.mobile"
+private let appGroupId = "group.com.damianmichalowski.wordly"
 private let snapshotKey = "wordly.widget.snapshot.v1"
 /// Must match `WordlyDailyWidget.kind` in the widget extension.
 private let widgetKind = "WordlyDailyWidget"

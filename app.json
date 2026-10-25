@@ -4,36 +4,30 @@
     "slug": "wordly",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/icons/ios-light.png",
     "scheme": "wordly",
     "userInterfaceStyle": "automatic",
-    "splash": {
-      "image": "./assets/images/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#f9f9f9"
-    },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.wordly.mobile",
+      "bundleIdentifier": "com.damianmichalowski.wordly",
       "buildNumber": "1",
-      "infoPlist": {
-        "CFBundleDisplayName": "Wordly"
-      },
-      "entitlements": {
-        "com.apple.security.application-groups": ["group.com.wordly.mobile"]
-      },
+      "deploymentTarget": "15.1",
       "config": {
         "usesNonExemptEncryption": false
+      },
+      "icon": {
+        "light": "./assets/icons/ios-light.png",
+        "dark": "./assets/icons/ios-dark.png",
+        "tinted": "./assets/icons/ios-tinted.png"
       }
     },
     "android": {
+      "predictiveBackGestureEnabled": false,
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
-      },
-      "predictiveBackGestureEnabled": false
+        "foregroundImage": "./assets/icons/app-icon-foreground.png",
+        "backgroundImage": "./assets/icons/app-icon-background.png",
+        "backgroundColor": "#E6F4FE"
+      }
     },
     "web": {
       "bundler": "metro",
@@ -41,9 +35,21 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#f9f9f9",
+          "image": "./assets/icons/splash-icon-light.png",
+          "dark": {
+            "image": "./assets/icons/splash-icon-dark.png",
+            "backgroundColor": "#121418"
+          },
+          "imageWidth": 200,
+          "resizeMode": "contain"
+        }
+      ],
       "expo-dev-client",
-      "expo-router",
-      "@bacons/apple-targets"
+      "expo-router"
     ],
     "experiments": {
       "typedRoutes": true
