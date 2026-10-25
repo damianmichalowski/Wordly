@@ -6,6 +6,7 @@ import * as WebBrowser from "expo-web-browser";
 
 import { i18n } from "@/src/i18n/i18n";
 import { getSupabaseClient, hasSupabaseEnv } from "@/src/lib/supabase/client";
+import { clearAllRevisionSessionDecks } from "@/src/services/revision/revisionSessionDeckCache";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -323,6 +324,9 @@ export async function signOutApp(): Promise<void> {
   if (!hasSupabaseEnv()) {
     return;
   }
+  // Deck powtórek nie jest kluczowany per user — bez czyszczenia kolejne konto
+  // na tym samym urządzeniu dostałoby słówka poprzedniego.
+  await clearAllRevisionSessionDecks();
   if (Platform.OS !== "web" && process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID) {
     try {
       const { GoogleSignin } = await getGoogleNativeModule();
