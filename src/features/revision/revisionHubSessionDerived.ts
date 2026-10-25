@@ -56,6 +56,16 @@ export function selectDisplayHubCounts(
   return fallback;
 }
 
+export function selectDifficultWordsCount(
+  hasProfile: boolean,
+  stats: RevisionHubStats | undefined,
+): number {
+  if (hasProfile && stats?.difficultWords) {
+    return stats.difficultWords.availableCount;
+  }
+  return 0;
+}
+
 export function selectDailyRevisionCompletedToday(
   hasProfile: boolean,
   stats: RevisionHubStats | undefined,

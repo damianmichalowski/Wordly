@@ -11,7 +11,10 @@ export function formatSessionDurationMs(ms: number): string {
   return `${s}s`;
 }
 
-export function getFlashSessionLabel(config: RevisionSessionConfig): string {
+export function getFlashSessionLabel(
+  config: RevisionSessionConfig,
+  t?: (key: string) => string,
+): string {
   switch (config.kind) {
     case "daily":
       return "Dziś";
@@ -19,6 +22,8 @@ export function getFlashSessionLabel(config: RevisionSessionConfig): string {
       return "Szybko";
     case "recent":
       return "Świeże";
+    case "difficultWords":
+      return t?.("revision.hub.difficultCardTitle") ?? "Trudne słowa";
     case "category":
       return "Kategoria";
     case "custom":

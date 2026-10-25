@@ -204,6 +204,18 @@ export const revisionScreenStyles = StyleSheet.create({
     color: StitchColors.onSurfaceVariant,
     textAlign: "center",
   },
+  refreshingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 6,
+  },
+  refreshingText: {
+    fontSize: 13,
+    fontFamily: StitchFonts.bodyMedium,
+    color: StitchColors.onSurfaceVariant,
+  },
   modalBackdrop: {
     flex: 1,
     backgroundColor: "rgba(47,51,52,0.4)",
@@ -312,11 +324,15 @@ export const revisionScreenStyles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   revisionFlashcardTranslationHeroText: {
-    fontSize: 34,
-    lineHeight: 40,
+    fontSize: 30,
+    lineHeight: 36,
     fontFamily: StitchFonts.display,
     color: StitchColors.onSurface,
     textAlign: "center",
+  },
+  revisionFlashcardHeroWord: {
+    fontSize: 40,
+    lineHeight: 46,
   },
   revisionFlashcardBackSection: {
     width: "100%",
@@ -405,6 +421,29 @@ export const revisionScreenStyles = StyleSheet.create({
     letterSpacing: 2,
     textTransform: "uppercase",
   },
+  /** Wiersz: etykieta sesji + opcjonalna pigułka „offline” (Daily Review bez zapisu serii). */
+  flashSessionLabelWithBadgeRow: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  flashSessionOfflinePill: {
+    flexShrink: 0,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: StitchRadius.full,
+    backgroundColor: StitchColors.surfaceContainerHighest,
+  },
+  flashSessionOfflinePillText: {
+    fontSize: 10,
+    fontFamily: StitchFonts.label,
+    color: StitchColors.onSurfaceVariant,
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+  },
   flashSessionTitle: {
     fontSize: 22,
     fontFamily: StitchFonts.headline,
@@ -480,6 +519,23 @@ export const revisionScreenStyles = StyleSheet.create({
     width: "100%",
     minHeight: 0,
   },
+  flashcardReportFooter: {
+    alignSelf: "stretch",
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    marginTop: "auto",
+    paddingTop: 4,
+  },
+  flashcardBottomBar: {
+    alignSelf: "stretch",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: "auto",
+    paddingTop: 4,
+    gap: 8,
+    minHeight: 44,
+  },
   revisionFlipShell: {
     flex: 1,
     width: "100%",
@@ -490,7 +546,6 @@ export const revisionScreenStyles = StyleSheet.create({
     minHeight: 0,
     gap: 16,
   },
-  /** Lewa strona paska (pill), bez osobnego Pressable; obrót obsługuje karta. */
   revisionFlipToolbarTitle: {
     flex: 1,
     marginRight: 12,
@@ -713,7 +768,7 @@ export const revisionScreenStyles = StyleSheet.create({
     marginTop: "auto",
     paddingTop: 20,
     flexDirection: "row",
-    alignItems: "stretch",
+    alignItems: "center",
     gap: 14,
     width: "100%",
     maxWidth: 440,
@@ -727,18 +782,22 @@ export const revisionScreenStyles = StyleSheet.create({
     gap: 8,
     marginBottom: 4,
   },
-  flashAbortPressable: {
+  flashEndSessionButton: {
     flexShrink: 0,
-    paddingVertical: 6,
-    paddingHorizontal: 4,
-    marginTop: -2,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    minHeight: 36,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: StitchRadius.full,
+    backgroundColor: StitchColors.surfaceContainer,
   },
-  flashAbortText: {
-    fontSize: 14,
+  flashEndSessionText: {
+    fontSize: 13,
     fontFamily: StitchFonts.bodySemi,
     color: StitchColors.onSurfaceVariant,
-    textDecorationLine: "underline",
-    letterSpacing: 0.2,
+    letterSpacing: 0.1,
   },
   actions: {
     marginTop: "auto",
@@ -756,13 +815,20 @@ export const revisionScreenStyles = StyleSheet.create({
     paddingHorizontal: 8,
     borderRadius: StitchRadius.lg,
   },
-  flashNavPrev: {
-    backgroundColor: StitchColors.surfaceContainerLow,
-  },
   flashNavPrevDisabled: {
     opacity: 0.45,
   },
-  flashNavNext: {
+  flashNavUndoCircle: {
+    flexGrow: 0,
+    flexShrink: 0,
+    backgroundColor: StitchColors.surfaceContainerLow,
+  },
+  flashNavDontKnow: {
+    flex: 1,
+    backgroundColor: StitchColors.surfaceContainer,
+  },
+  flashNavKnow: {
+    flex: 1,
     backgroundColor: StitchColors.primary,
     shadowColor: StitchColors.primary,
     shadowOpacity: 0.25,
@@ -770,12 +836,12 @@ export const revisionScreenStyles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     elevation: 4,
   },
-  flashNavPrevText: {
+  flashNavDontKnowText: {
     fontSize: 15,
     fontFamily: StitchFonts.headline,
-    color: StitchColors.onSurfaceVariant,
+    color: StitchColors.onSurface,
   },
-  flashNavNextText: {
+  flashNavKnowText: {
     fontSize: 15,
     fontFamily: StitchFonts.headline,
     color: StitchColors.onPrimary,
@@ -813,7 +879,6 @@ export const revisionScreenStyles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingBottom: 40,
   },
-  // (hub fetch error banner — `TransportRetryMessage` variant hubBanner)
   // (unlock banner styles removed; replaced by reusable component)
   hubQuickSizeHint: {
     fontSize: 11,
@@ -822,6 +887,51 @@ export const revisionScreenStyles = StyleSheet.create({
     marginTop: 6,
     textAlign: "center",
     lineHeight: 15,
+  },
+  hubDifficultEmptyHint: {
+    marginTop: 8,
+    fontSize: 13,
+    fontFamily: StitchFonts.body,
+    color: StitchColors.onSurfaceVariant,
+    lineHeight: 18,
+  },
+  difficultAnswerRow: {
+    flexDirection: "row",
+    gap: 10,
+    paddingHorizontal: 20,
+    paddingTop: 4,
+    paddingBottom: 4,
+  },
+  difficultAnswerError: {
+    paddingHorizontal: 20,
+    paddingBottom: 4,
+    fontSize: 13,
+    fontFamily: StitchFonts.body,
+    color: StitchColors.error,
+    textAlign: "center",
+  },
+  difficultAnswerBtn: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: StitchRadius.lg,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
+    backgroundColor: StitchColors.surfaceContainer,
+  },
+  difficultAnswerBtnKnow: {
+    backgroundColor: StitchColors.primary,
+  },
+  difficultAnswerBtnDisabled: {
+    opacity: 0.45,
+  },
+  difficultAnswerBtnText: {
+    fontSize: 15,
+    fontFamily: StitchFonts.bodySemi,
+    color: StitchColors.onSurface,
+  },
+  difficultAnswerBtnTextOnPrimary: {
+    color: StitchColors.onPrimary,
   },
   hubIntro: {
     marginBottom: 22,
@@ -963,8 +1073,6 @@ export const revisionScreenStyles = StyleSheet.create({
     elevation: 4,
     overflow: "hidden",
     position: "relative",
-    /** Nadpisuje minHeight z `hubCardWhite` (220): treść jest niska, ikona jest absolute. */
-    minHeight: 0,
     alignItems: "stretch",
   },
   /** Daily Review ukończony dziś, subtelny akcent „success”, spójny z secondary w UI. */
@@ -975,15 +1083,16 @@ export const revisionScreenStyles = StyleSheet.create({
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 6 },
   },
-  /** Wiersz: Recommended / Completed + opcjonalnie streak (ikona + liczba, bez pill). */
+  /** Prawy górny róg: Recommended / Completed + streak. */
   hubDailyTopBadgesRow: {
     position: "absolute",
-    top: 14,
-    left: 14,
-    right: 14,
+    top: 22,
+    right: 22,
+    left: 56,
     zIndex: 2,
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "flex-end",
     flexWrap: "wrap",
     gap: 8,
   },
@@ -1069,17 +1178,6 @@ export const revisionScreenStyles = StyleSheet.create({
     color: "#286C34",
     letterSpacing: 0.2,
   },
-  /** Tytuł + opis: miejsce pod ikonę z prawej (absolute). */
-  hubDailyTextBlock: {
-    position: "relative",
-    zIndex: 1,
-    paddingRight: 100,
-    marginBottom: 4,
-  },
-  /** Odstęp pod badge „Recommended” (absolute, nie zajmuje flow). */
-  hubDailyTextBlockWithBadge: {
-    paddingTop: 42,
-  },
   /** Dolny rząd karty Daily: lewy dół (streak / done / label) + strzałka. */
   hubDailyBottomRow: {
     marginTop: 14,
@@ -1116,25 +1214,6 @@ export const revisionScreenStyles = StyleSheet.create({
     alignSelf: "stretch",
     flexShrink: 1,
   },
-  hubDailyDesc: {
-    fontSize: 13,
-    fontFamily: StitchFonts.body,
-    color: StitchColors.onSurfaceVariant,
-    lineHeight: 20,
-  },
-  /** Duża ikona psychology z prawej, częściowo jak tło karty (jak wcześniejszy hero). */
-  hubDailyIconDecor: {
-    position: "absolute",
-    right: -6,
-    top: 4,
-    opacity: 0.2,
-  },
-  hubDailyCardTitle: {
-    fontSize: 22,
-    fontFamily: StitchFonts.headline,
-    color: StitchColors.onSurface,
-    marginBottom: 8,
-  },
   hubStartSessionBtn: {
     backgroundColor: StitchColors.primary,
     paddingHorizontal: 28,
@@ -1155,11 +1234,121 @@ export const revisionScreenStyles = StyleSheet.create({
     paddingTop: 8,
     gap: 20,
   },
+  /** Daily Review — przed startem offline: wyraźny tag (nie tylko zwykły akapit). */
+  hubDailyOfflineTag: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: StitchRadius.md,
+    backgroundColor: `${StitchColors.error}12`,
+    borderWidth: 1,
+    borderColor: `${StitchColors.error}30`,
+  },
+  hubDailyOfflineTagTextCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  hubDailyOfflineTagLabel: {
+    fontSize: 11,
+    fontFamily: StitchFonts.label,
+    color: StitchColors.error,
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+    marginBottom: 4,
+  },
+  hubDailyOfflineTagBody: {
+    fontSize: 14,
+    fontFamily: StitchFonts.bodyMedium,
+    color: StitchColors.onSurface,
+    lineHeight: 20,
+  },
   hubSessionIntro: {
     fontSize: 16,
     fontFamily: StitchFonts.body,
     color: StitchColors.onSurfaceVariant,
     lineHeight: 24,
+  },
+  hubFlashcardHowTo: {
+    gap: 12,
+  },
+  hubFlashcardHowToTitle: {
+    fontSize: 15,
+    fontFamily: StitchFonts.bodySemi,
+    color: StitchColors.onSurface,
+    letterSpacing: 0.1,
+    marginBottom: 2,
+  },
+  hubFlashcardHowToRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 20,
+    minHeight: 24,
+  },
+  hubFlashcardHowToIconSlot: {
+    width: 36,
+    minHeight: 24,
+    alignItems: "flex-start",
+    justifyContent: "center",
+  },
+  hubFlashcardHowToMasteryBlock: {
+    marginTop: 12,
+    gap: 10,
+  },
+  hubFlashcardHowToInlineLine: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: StitchColors.onSurfaceVariant,
+  },
+  hubFlashcardHowToInlineEmphasis: {
+    fontFamily: StitchFonts.bodySemi,
+    color: StitchColors.primary,
+  },
+  hubFlashcardHowToInlineBody: {
+    fontFamily: StitchFonts.body,
+    color: StitchColors.onSurfaceVariant,
+  },
+  hubFlashcardHowToRowText: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 14,
+    fontFamily: StitchFonts.body,
+    color: StitchColors.onSurfaceVariant,
+    lineHeight: 20,
+  },
+  hubFlashcardHowToTapDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 1.5,
+    borderColor: StitchColors.onSurfaceVariant,
+  },
+  hubFlashcardHowToProgressIcons: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-start",
+    gap: 3,
+    alignSelf: "flex-start",
+  },
+  hubFlashcardHowToProgressBadge: {
+    fontSize: 14,
+    lineHeight: 18,
+    fontFamily: StitchFonts.bodySemi,
+    color: StitchColors.primary,
+  },
+  hubFlashcardHowToReady: {
+    fontSize: 15,
+    fontFamily: StitchFonts.bodySemi,
+    color: StitchColors.onSurface,
+    lineHeight: 22,
+  },
+  hubSessionSheetSectionLabel: {
+    fontSize: 15,
+    fontFamily: StitchFonts.bodySemi,
+    color: StitchColors.onSurface,
+    letterSpacing: 0.1,
+    marginTop: 4,
   },
   hubSessionSheetPrimary: {
     marginTop: 8,

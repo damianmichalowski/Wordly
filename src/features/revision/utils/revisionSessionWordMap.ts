@@ -63,9 +63,20 @@ export function wordDetailsToVocabularyWord(d: WordDetails): VocabularyWord {
       examplePartsDeduped.length > 1 ? examplePartsDeduped : undefined,
     exampleTarget: "",
     cefrLevel: (d.cefr.code ?? "A1") as any,
+    categories:
+      d.categories.length > 0
+        ? d.categories.map((c) => ({
+            id: c.id,
+            code: c.code,
+            name: c.name,
+          }))
+        : undefined,
     knownAt: null,
     pronunciationText: d.ipa ?? undefined,
     audioUrl: null,
     partOfSpeech: first?.part_of_speech.name,
+    isDifficult: d.is_difficult === true,
+    difficultCorrectStreak: d.difficult_correct_streak ?? 0,
+    difficultDontKnowCounter: d.difficult_dont_know_counter ?? 0,
   };
 }

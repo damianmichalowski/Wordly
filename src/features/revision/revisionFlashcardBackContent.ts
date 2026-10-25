@@ -43,13 +43,9 @@ export function getRevisionTranslationLines(word: VocabularyWord): string[] {
 }
 
 /**
- * Do 3 przykładów: najpierw z bazy (`exampleParts` / `exampleSource`),
- * potem uzupełnienie z sieci (EN), bez duplikatów.
+ * Do 3 przykładów wyłącznie z danych słowa (`exampleParts` / `exampleSource`).
  */
-export function getRevisionExampleLines(
-  word: VocabularyWord,
-  online: { source: string }[] | null,
-): string[] {
+export function getRevisionExampleLines(word: VocabularyWord): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
 
@@ -60,13 +56,6 @@ export function getRevisionExampleLines(
     }
   } else if (word.exampleSource?.trim()) {
     dedupeAdd(out, seen, word.exampleSource);
-  }
-
-  if (online && word.sourceLanguageCode === "en") {
-    for (const row of online) {
-      if (out.length >= MAX) break;
-      dedupeAdd(out, seen, row.source);
-    }
   }
 
   return out.slice(0, MAX);

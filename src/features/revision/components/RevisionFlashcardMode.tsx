@@ -1,7 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import {
-  ActivityIndicator,
+  type GestureResponderEvent,
+  type LayoutChangeEvent,
   Pressable,
   StyleSheet,
   Text,
@@ -27,7 +29,8 @@ import {
   roundIconPressStyle,
   surfacePressStyle,
 } from "@/src/components/ui/interaction";
-import { TransportRetryMessage } from "@/src/components/ui/TransportRetryMessage";
+import { WordDifficultInteractiveBadge } from "@/src/components/word/WordDifficultInteractiveBadge";
+import { WordReportEntry } from "@/src/features/word-details/components/WordReportEntry";
 import { homeWordCardStyles } from "@/src/features/daily-word/styles/homeWordCardStyles";
 import {
   getRevisionExampleLines,
@@ -37,18 +40,17 @@ import {
   canPronounce,
   speakWord,
 } from "@/src/services/audio/pronunciationService";
-import { fetchExternalUsageExamples } from "@/src/services/examples/externalUsageExamples";
-import {
-  SESSION_FLASHCARD_STUCK_MS,
-  useStuckLoading,
-} from "@/src/hooks/useStuckLoading";
 import { StitchColors, StitchRadius } from "@/src/theme/wordlyStitchTheme";
 import type { VocabularyWord } from "@/src/types/words";
-import { LogTag, logger } from "@/src/utils/logger";
 import { logUserAction } from "@/src/utils/userActionLog";
 
 import { revisionScreenStyles } from "../revisionScreenStyles";
-import { RevisionFlipCard } from "./RevisionFlipCard";
+import {
+  RevisionFlipCard,
+  type RevisionFlipDirection,
+} from "./RevisionFlipCard";
+
+export type RevisionFlashcardVariant = "default" | "difficultWords";
 
 type RevisionFlashcardModeProps = {
   flashDeck: VocabularyWord[];
@@ -59,13 +61,21 @@ type RevisionFlashcardModeProps = {
   sessionLoading?: boolean;
   /** Ponowne pobranie talii (po „zawieszeniu” / offline). */
   onRetrySessionLoad?: () => void;
-  /** Wyjście z fiszek bez zapisu sesji (biblioteka: wróć do listy; Hub: anuluj sesję). */
-  onAbortSession: () => void;
-  flip: () => void;
-  next: () => void;
-  previous: () => void;
+  /** Otwiera potwierdzenie zakończenia sesji (Hub) lub wyjście bez zapisu (biblioteka). */
+  onEndSession: () => void;
+  flip: (direction?: RevisionFlipDirection) => void;
+  lastFlipDirection: RevisionFlipDirection;
+  submitFlashcardKnow: () => Promise<"advanced" | "complete">;
+  submitFlashcardDontKnow: () => Promise<"advanced" | "complete">;
+  undoFlashcardAnswer: () => Promise<void>;
+  canUndoFlashcard: boolean;
   sessionLabel?: string;
+  /** Daily Review started offline — nie zapisuje serii; subtelna pigułka w nagłówku. */
+  offlineDailyNoStreak?: boolean;
   onLastCardContinue?: () => void;
+  flashcardVariant?: RevisionFlashcardVariant;
+  difficultDisplayStreak?: number;
+  difficultSessionAnswerError?: string | null;
 };
 
 export function RevisionFlashcardMode({
@@ -75,19 +85,24 @@ export function RevisionFlashcardMode({
   isFlipped,
   sessionLoading = false,
   onRetrySessionLoad,
-  onAbortSession,
+  onEndSession,
   flip,
-  next,
-  previous,
+  lastFlipDirection,
+  submitFlashcardKnow,
+  submitFlashcardDontKnow,
+  undoFlashcardAnswer,
+  canUndoFlashcard,
   sessionLabel,
+  offlineDailyNoStreak = false,
   onLastCardContinue,
+  flashcardVariant = "default",
+  difficultDisplayStreak = 0,
+  difficultSessionAnswerError = null,
 }: RevisionFlashcardModeProps) {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
+  const isDifficultMode = flashcardVariant === "difficultWords";
   const { height: windowH } = useWindowDimensions();
-  const [onlineExamples, setOnlineExamples] = useState<
-    { source: string }[] | null
-  >(null);
-  const [loadingOnlineExamples, setLoadingOnlineExamples] = useState(false);
 
   const flipHeight = useMemo(() => {
     const h = Math.round(
@@ -96,42 +111,39 @@ export function RevisionFlashcardMode({
     return h;
   }, [windowH]);
 
-  const sessionLoadActive = sessionLoading && flashDeck.length === 0;
-  /** Inkrementacja przy „Spróbuj ponownie” — resetuje timer „stuck” i wraca do skeletonu + spinnera. */
-  const [sessionLoadAttempt, setSessionLoadAttempt] = useState(0);
-  const sessionLoadStuck = useStuckLoading(
-    sessionLoadActive,
-    SESSION_FLASHCARD_STUCK_MS,
-    sessionLoadAttempt,
+  /** Kierunek karuzeli z delty indeksu (musi być sync przy renderze, przed animacją). */
+  const prevDeckIndexRef = useRef(index);
+  const deckDirectionRef = useRef<"next" | "prev">("next");
+  if (index !== prevDeckIndexRef.current) {
+    deckDirectionRef.current =
+      index > prevDeckIndexRef.current ? "next" : "prev";
+    prevDeckIndexRef.current = index;
+  }
+  const deckDirection = deckDirectionRef.current;
+
+  const cardWidthRef = useRef(0);
+
+  const onCardLayout = useCallback((event: LayoutChangeEvent) => {
+    cardWidthRef.current = event.nativeEvent.layout.width;
+  }, []);
+
+  const onFlipPress = useCallback(
+    (event: GestureResponderEvent) => {
+      const width = cardWidthRef.current;
+      const x = event.nativeEvent.locationX;
+      const tapSide: RevisionFlipDirection =
+        width > 0 && x < width / 2 ? -1 : 1;
+      const direction = (
+        isFlipped ? -tapSide : tapSide
+      ) as RevisionFlipDirection;
+      logUserAction("button_press", {
+        target: "revision_flashcard_flip",
+        direction: direction === 1 ? "right" : "left",
+      });
+      flip(direction);
+    },
+    [flip, isFlipped],
   );
-  const sessionLoadShowsProgressSpinner =
-    sessionLoadActive && !sessionLoadStuck;
-
-  useEffect(() => {
-    if (!sessionLoadActive) {
-      setSessionLoadAttempt(0);
-    }
-  }, [sessionLoadActive]);
-
-  /** Kierunek animacji talii przy zmianie indeksu (Dalej / Wstecz). */
-  const [deckDirection, setDeckDirection] = useState<"next" | "prev">("next");
-
-  const goNextCard = useCallback(() => {
-    logUserAction("button_press", { target: "revision_flashcard_next" });
-    setDeckDirection("next");
-    next();
-  }, [next]);
-
-  const goPreviousCard = useCallback(() => {
-    logUserAction("button_press", { target: "revision_flashcard_previous" });
-    setDeckDirection("prev");
-    previous();
-  }, [previous]);
-
-  const onFlip = useCallback(() => {
-    logUserAction("button_press", { target: "revision_flashcard_flip" });
-    flip();
-  }, [flip]);
 
   /** Szybsze przejście, mniejszy „bounce” (wyższy damping / stiffness, karta nie wychodzi poza ekran). */
   const deckEntering = useMemo(
@@ -150,48 +162,6 @@ export function RevisionFlashcardMode({
     [deckDirection],
   );
 
-  useEffect(() => {
-    setOnlineExamples(null);
-    setLoadingOnlineExamples(false);
-  }, [activeCard?.id]);
-
-  useEffect(() => {
-    if (!activeCard) {
-      return;
-    }
-    if (activeCard.exampleSource?.trim()) {
-      setOnlineExamples(null);
-      setLoadingOnlineExamples(false);
-      return;
-    }
-    if (activeCard.sourceLanguageCode !== "en") {
-      setOnlineExamples(null);
-      setLoadingOnlineExamples(false);
-      return;
-    }
-    let cancelled = false;
-    setLoadingOnlineExamples(true);
-    setOnlineExamples(null);
-    logger.info(
-      LogTag.REVISION_SESSION,
-      `Background enrichment started (examples, sense_id=${activeCard.id})`,
-    );
-    void fetchExternalUsageExamples({
-      lemma: activeCard.sourceText,
-      sourceLanguageCode: activeCard.sourceLanguageCode,
-      targetLanguageCode: activeCard.targetLanguageCode,
-    }).then((rows) => {
-      if (!cancelled) {
-        setOnlineExamples(rows);
-        setLoadingOnlineExamples(false);
-      }
-    });
-    return () => {
-      cancelled = true;
-      setLoadingOnlineExamples(false);
-    };
-  }, [activeCard]);
-
   const revisionTranslationLines = useMemo(() => {
     if (!activeCard) {
       return [] as string[];
@@ -203,8 +173,39 @@ export function RevisionFlashcardMode({
     if (!activeCard) {
       return [] as string[];
     }
-    return getRevisionExampleLines(activeCard, onlineExamples);
-  }, [activeCard, onlineExamples]);
+    return getRevisionExampleLines(activeCard);
+  }, [activeCard]);
+
+  const handleKnowPress = useCallback(() => {
+    void (async () => {
+      const result = await submitFlashcardKnow();
+      if (result === "complete") {
+        logUserAction("button_press", {
+          target: "revision_flashcard_finish_session",
+        });
+        (onLastCardContinue ?? onEndSession)();
+      }
+    })();
+  }, [onEndSession, onLastCardContinue, submitFlashcardKnow]);
+
+  const handleDontKnowPress = useCallback(() => {
+    void (async () => {
+      const result = await submitFlashcardDontKnow();
+      if (result === "complete") {
+        logUserAction("button_press", {
+          target: "revision_flashcard_finish_session",
+        });
+        (onLastCardContinue ?? onEndSession)();
+      }
+    })();
+  }, [onEndSession, onLastCardContinue, submitFlashcardDontKnow]);
+
+  const handleUndoPress = useCallback(() => {
+    if (!canUndoFlashcard) {
+      return;
+    }
+    void undoFlashcardAnswer();
+  }, [canUndoFlashcard, undoFlashcardAnswer]);
 
   if (sessionLoading && flashDeck.length === 0) {
     return (
@@ -217,42 +218,53 @@ export function RevisionFlashcardMode({
         >
           <View style={revisionScreenStyles.flashSessionHeaderStack}>
             <View style={revisionScreenStyles.flashSessionHeaderLine}>
-              <Text
-                style={[
-                  revisionScreenStyles.flashSessionLabel,
-                  revisionScreenStyles.flashSessionLabelFlexible,
-                ]}
-                numberOfLines={2}
-                ellipsizeMode="tail"
-              >
-                {sessionLabel ?? "Powtórka"}
-              </Text>
+              <View style={revisionScreenStyles.flashSessionLabelWithBadgeRow}>
+                <Text
+                  style={[
+                    revisionScreenStyles.flashSessionLabel,
+                    { flex: 1, minWidth: 0 },
+                  ]}
+                  numberOfLines={2}
+                  ellipsizeMode="tail"
+                >
+                  {sessionLabel ?? "Powtórka"}
+                </Text>
+                {offlineDailyNoStreak ? (
+                  <View style={revisionScreenStyles.flashSessionOfflinePill}>
+                    <Text style={revisionScreenStyles.flashSessionOfflinePillText}>
+                      Offline
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
               <Pressable
                 android_ripple={ANDROID_RIPPLE_MUTED}
                 style={({ pressed }) => [
-                  revisionScreenStyles.flashAbortPressable,
+                  revisionScreenStyles.flashEndSessionButton,
                   surfacePressStyle(pressed, false),
                 ]}
                 onPress={() => {
                   logUserAction("button_press", {
-                    target: "revision_flashcard_abort_session",
+                    target: "revision_flashcard_end_session",
                   });
-                  onAbortSession();
+                  onEndSession();
                 }}
                 hitSlop={HIT_SLOP_COMFORT}
                 accessibilityRole="button"
-                accessibilityLabel="Anuluj sesję bez zapisywania powtórki"
+                accessibilityLabel={t("revision.hub.endSessionA11y")}
               >
-                <Text style={revisionScreenStyles.flashAbortText}>
-                  Anuluj sesję
+                <Ionicons
+                  name="close"
+                  size={18}
+                  color={StitchColors.onSurfaceVariant}
+                />
+                <Text style={revisionScreenStyles.flashEndSessionText}>
+                  {t("revision.hub.endSession")}
                 </Text>
               </Pressable>
             </View>
             <View style={revisionScreenStyles.flashSessionHeaderLine}>
               <Text style={revisionScreenStyles.flashSessionTitle}>Postęp</Text>
-              {sessionLoadShowsProgressSpinner ? (
-                <ActivityIndicator size="small" color={StitchColors.primary} />
-              ) : null}
             </View>
           </View>
           <View style={revisionScreenStyles.flashSessionHeader}>
@@ -261,21 +273,7 @@ export function RevisionFlashcardMode({
         </View>
         <View style={revisionScreenStyles.flashCardOuter}>
           <View style={revisionScreenStyles.revisionDeckCardWrap}>
-            {sessionLoadStuck ? (
-              <TransportRetryMessage
-                variant="embedded"
-                onRetry={() => {
-                  logUserAction("button_press", {
-                    target: "revision_flashcard_session_load_retry",
-                  });
-                  setSessionLoadAttempt((n) => n + 1);
-                  onRetrySessionLoad?.();
-                }}
-                isRetrying={false}
-              />
-            ) : (
-              <RevisionSessionCardSkeleton height={flipHeight} />
-            )}
+            <RevisionSessionCardSkeleton height={flipHeight} />
           </View>
         </View>
         <View
@@ -307,7 +305,7 @@ export function RevisionFlashcardMode({
             logUserAction("button_press", {
               target: "revision_flashcard_abort_empty",
             });
-            onAbortSession();
+            onEndSession();
           }}
         >
           <Text style={revisionScreenStyles.primaryButtonText}>Wróć</Text>
@@ -319,17 +317,24 @@ export function RevisionFlashcardMode({
   const total = flashDeck.length;
   const current = index + 1;
   const progressRatio = total > 0 ? current / total : 0;
-  const isLastCard = current === total;
-  const isFirstCard = index === 0;
   const ipa = activeCard.pronunciationText?.trim();
 
   const audioToolbar = (
     <View style={homeWordCardStyles.focalTopRow}>
       <View style={revisionScreenStyles.revisionFlipToolbarTitle}>
-        <View style={homeWordCardStyles.levelPill}>
-          <Text style={homeWordCardStyles.levelPillText}>
-            {activeCard.cefrLevel}
-          </Text>
+        <View style={homeWordCardStyles.badgeRow}>
+          <View style={homeWordCardStyles.levelPill}>
+            <Text style={homeWordCardStyles.levelPillText}>
+              {activeCard.cefrLevel}
+            </Text>
+          </View>
+          {(activeCard.categories ?? []).map((category) => (
+            <View key={category.id} style={homeWordCardStyles.levelPill}>
+              <Text style={homeWordCardStyles.levelPillText}>
+                {category.name}
+              </Text>
+            </View>
+          ))}
         </View>
       </View>
       <View style={homeWordCardStyles.topRowActions}>
@@ -362,12 +367,42 @@ export function RevisionFlashcardMode({
     </View>
   );
 
+  const flashcardReportEntry = (
+    <WordReportEntry
+      wordId={activeCard.id}
+      lemma={activeCard.sourceText}
+      variant="flashcardCorner"
+      logOpenTarget="revision_flashcard_report_open"
+    />
+  );
+
+  const flashcardFooter = (
+    <View style={revisionScreenStyles.flashcardBottomBar}>
+      {isDifficultMode ? (
+        <WordDifficultInteractiveBadge
+          variant="mastery"
+          wordId={activeCard.id}
+          masteryStreak={difficultDisplayStreak}
+        />
+      ) : (
+        <WordDifficultInteractiveBadge
+          variant="difficult"
+          wordId={activeCard.id}
+          isDifficult={activeCard.isDifficult === true}
+          dontKnowCounter={activeCard.difficultDontKnowCounter ?? 0}
+        />
+      )}
+      {flashcardReportEntry}
+    </View>
+  );
+
   const frontFace = (
     <View style={revisionScreenStyles.revisionFlipFaceRoot}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Odwróć fiszkę"
-        onPress={onFlip}
+        onPress={onFlipPress}
+        onLayout={onCardLayout}
         style={({ pressed }) => [
           homeWordCardStyles.focalShell,
           revisionScreenStyles.revisionFlipShell,
@@ -390,7 +425,12 @@ export function RevisionFlashcardMode({
                 revisionScreenStyles.revisionFlipFrontWordNudge,
               ]}
             >
-              <Text style={homeWordCardStyles.heroWord}>
+              <Text
+                style={[
+                  homeWordCardStyles.heroWord,
+                  revisionScreenStyles.revisionFlashcardHeroWord,
+                ]}
+              >
                 {activeCard.sourceText}
               </Text>
               {ipa ? (
@@ -400,6 +440,7 @@ export function RevisionFlashcardMode({
               ) : null}
             </View>
           </View>
+          {flashcardFooter}
         </View>
       </Pressable>
     </View>
@@ -410,7 +451,8 @@ export function RevisionFlashcardMode({
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Odwróć fiszkę"
-        onPress={onFlip}
+        onPress={onFlipPress}
+        onLayout={onCardLayout}
         style={({ pressed }) => [
           homeWordCardStyles.focalShell,
           revisionScreenStyles.revisionFlipShell,
@@ -476,63 +518,9 @@ export function RevisionFlashcardMode({
                       ))}
                     </View>
                   </View>
-                ) : activeCard.sourceLanguageCode !== "en" ? (
-                  <View style={revisionScreenStyles.revisionFlashcardBackSection}>
-                    <Text style={revisionScreenStyles.revisionFlashcardExamplesHeading}>
-                      Przykłady
-                    </Text>
-                    <View style={revisionScreenStyles.revisionFlashcardExampleLine}>
-                      <View
-                        style={revisionScreenStyles.revisionFlashcardExampleLineBar}
-                      />
-                      <Text
-                        style={[
-                          revisionScreenStyles.revisionFlashcardMutedHint,
-                          revisionScreenStyles.revisionFlashcardMutedHintInSection,
-                        ]}
-                      >
-                        Krótkie przykłady z sieci są dostępne tylko dla słów z
-                        języka angielskiego.
-                      </Text>
-                    </View>
-                  </View>
-                ) : loadingOnlineExamples || onlineExamples === null ? (
-                  <View style={revisionScreenStyles.revisionFlashcardBackSection}>
-                    <Text style={revisionScreenStyles.revisionFlashcardExamplesHeading}>
-                      Przykłady
-                    </Text>
-                    <View style={revisionScreenStyles.revisionFlashcardLoadingRow}>
-                      <ActivityIndicator
-                        size="small"
-                        color={StitchColors.primary}
-                      />
-                      <Text style={revisionScreenStyles.revisionFlashcardMutedHint}>
-                        Szukam przykładów…
-                      </Text>
-                    </View>
-                  </View>
-                ) : (
-                  <View style={revisionScreenStyles.revisionFlashcardBackSection}>
-                    <Text style={revisionScreenStyles.revisionFlashcardExamplesHeading}>
-                      Przykłady
-                    </Text>
-                    <View style={revisionScreenStyles.revisionFlashcardExampleLine}>
-                      <View
-                        style={revisionScreenStyles.revisionFlashcardExampleLineBar}
-                      />
-                      <Text
-                        style={[
-                          revisionScreenStyles.revisionFlashcardMutedHint,
-                          revisionScreenStyles.revisionFlashcardMutedHintInSection,
-                        ]}
-                      >
-                        Brak krótkich przykładów dla tego słowa.
-                      </Text>
-                    </View>
-                  </View>
-                )}
+                ) : null}
               </View>
-          </View>
+            </View>
         </View>
       </Pressable>
     </View>
@@ -548,33 +536,49 @@ export function RevisionFlashcardMode({
       >
         <View style={revisionScreenStyles.flashSessionHeaderStack}>
           <View style={revisionScreenStyles.flashSessionHeaderLine}>
-            <Text
-              style={[
-                revisionScreenStyles.flashSessionLabel,
-                revisionScreenStyles.flashSessionLabelFlexible,
-              ]}
-              numberOfLines={2}
-              ellipsizeMode="tail"
-            >
-              {sessionLabel ?? "Powtórka"}
-            </Text>
+            <View style={revisionScreenStyles.flashSessionLabelWithBadgeRow}>
+              <Text
+                style={[
+                  revisionScreenStyles.flashSessionLabel,
+                  { flex: 1, minWidth: 0 },
+                ]}
+                numberOfLines={2}
+                ellipsizeMode="tail"
+              >
+                {sessionLabel ?? "Powtórka"}
+              </Text>
+              {offlineDailyNoStreak ? (
+                <View style={revisionScreenStyles.flashSessionOfflinePill}>
+                  <Text style={revisionScreenStyles.flashSessionOfflinePillText}>
+                    Offline
+                  </Text>
+                </View>
+              ) : null}
+            </View>
             <Pressable
               android_ripple={ANDROID_RIPPLE_MUTED}
               style={({ pressed }) => [
-                revisionScreenStyles.flashAbortPressable,
+                revisionScreenStyles.flashEndSessionButton,
                 surfacePressStyle(pressed, false),
               ]}
               onPress={() => {
                 logUserAction("button_press", {
-                  target: "revision_flashcard_abort_session",
+                  target: "revision_flashcard_end_session",
                 });
-                onAbortSession();
+                onEndSession();
               }}
               hitSlop={HIT_SLOP_COMFORT}
               accessibilityRole="button"
-              accessibilityLabel="Anuluj sesję bez zapisywania powtórki"
+              accessibilityLabel={t("revision.hub.endSessionA11y")}
             >
-              <Text style={revisionScreenStyles.flashAbortText}>Anuluj sesję</Text>
+              <Ionicons
+                name="close"
+                size={18}
+                color={StitchColors.onSurfaceVariant}
+              />
+              <Text style={revisionScreenStyles.flashEndSessionText}>
+                {t("revision.hub.endSession")}
+              </Text>
             </Pressable>
           </View>
           <View style={revisionScreenStyles.flashSessionHeaderLine}>
@@ -609,12 +613,19 @@ export function RevisionFlashcardMode({
           <RevisionFlipCard
             cardKey={activeCard.id}
             isFlipped={isFlipped}
+            flipDirection={lastFlipDirection}
             height={flipHeight}
             front={frontFace}
             back={backFace}
           />
         </Animated.View>
       </View>
+
+      {difficultSessionAnswerError ? (
+        <Text style={revisionScreenStyles.difficultAnswerError}>
+          {difficultSessionAnswerError}
+        </Text>
+      ) : null}
 
       <View
         style={[
@@ -623,56 +634,54 @@ export function RevisionFlashcardMode({
         ]}
       >
         <Pressable
-          android_ripple={ANDROID_RIPPLE_SURFACE}
+          android_ripple={ANDROID_RIPPLE_ICON_ROUND}
           style={({ pressed }) => [
-            revisionScreenStyles.flashNavButton,
-            revisionScreenStyles.flashNavPrev,
-            isFirstCard && revisionScreenStyles.flashNavPrevDisabled,
-            surfacePressStyle(pressed, isFirstCard),
+            homeWordCardStyles.roundIconButton,
+            revisionScreenStyles.flashNavUndoCircle,
+            !canUndoFlashcard && revisionScreenStyles.flashNavPrevDisabled,
+            roundIconPressStyle(pressed, !canUndoFlashcard),
           ]}
-          onPress={goPreviousCard}
-          disabled={isFirstCard}
+          onPress={handleUndoPress}
+          disabled={!canUndoFlashcard}
           accessibilityRole="button"
-          accessibilityState={{ disabled: isFirstCard }}
-          accessibilityLabel="Poprzednie słowo"
+          accessibilityState={{ disabled: !canUndoFlashcard }}
+          accessibilityLabel={t("revision.hub.undo")}
         >
           <Ionicons
-            name="chevron-back"
+            name="arrow-undo"
             size={22}
             color={StitchColors.onSurfaceVariant}
           />
-          <Text style={revisionScreenStyles.flashNavPrevText}>Wstecz</Text>
+        </Pressable>
+        <Pressable
+          android_ripple={ANDROID_RIPPLE_SURFACE}
+          style={({ pressed }) => [
+            revisionScreenStyles.flashNavButton,
+            revisionScreenStyles.flashNavDontKnow,
+            surfacePressStyle(pressed, false),
+          ]}
+          onPress={handleDontKnowPress}
+          accessibilityRole="button"
+          accessibilityLabel={t("revision.hub.answerDontKnow")}
+        >
+          <Text style={revisionScreenStyles.flashNavDontKnowText}>
+            {t("revision.hub.answerDontKnow")}
+          </Text>
         </Pressable>
         <Pressable
           android_ripple={ANDROID_RIPPLE_PRIMARY}
           style={({ pressed }) => [
             revisionScreenStyles.flashNavButton,
-            revisionScreenStyles.flashNavNext,
+            revisionScreenStyles.flashNavKnow,
             primarySolidPressStyle(pressed, false),
           ]}
-          onPress={() => {
-            if (isLastCard) {
-              logUserAction("button_press", {
-                target: "revision_flashcard_finish_session",
-              });
-              const fn = onLastCardContinue ?? onAbortSession;
-              fn();
-              return;
-            }
-            goNextCard();
-          }}
-          accessibilityLabel={
-            isLastCard ? "Zakończ sesję powtórki" : "Następne słowo"
-          }
+          onPress={handleKnowPress}
+          accessibilityRole="button"
+          accessibilityLabel={t("revision.hub.answerKnow")}
         >
-          <Text style={revisionScreenStyles.flashNavNextText}>
-            {isLastCard ? "Zakończ" : "Dalej"}
+          <Text style={revisionScreenStyles.flashNavKnowText}>
+            {t("revision.hub.answerKnow")}
           </Text>
-          <Ionicons
-            name={isLastCard ? "checkmark-circle" : "chevron-forward"}
-            size={22}
-            color={StitchColors.onPrimary}
-          />
         </Pressable>
       </View>
     </View>

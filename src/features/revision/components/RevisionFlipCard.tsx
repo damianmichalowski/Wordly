@@ -1,7 +1,6 @@
-import { type ReactNode, useEffect, useLayoutEffect } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useRef } from "react";
 import { StyleSheet, View } from "react-native";
 import Animated, {
-  interpolate,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
@@ -13,54 +12,52 @@ const SPRING = {
   mass: 0.75,
 };
 
+export type RevisionFlipDirection = 1 | -1;
+
 type RevisionFlipCardProps = {
-  /** Zmiana klucza resetuje obrót (nowa fiszka). */
   cardKey: string;
   isFlipped: boolean;
-  /** Wysokość „sceny” obrotu (px). */
+  flipDirection: RevisionFlipDirection;
   height: number;
   front: ReactNode;
   back: ReactNode;
 };
 
-/**
- * Fiszka 3D (przód / tył) z płynną animacją obrotu (react-native-reanimated).
- */
 export function RevisionFlipCard({
   cardKey,
   isFlipped,
+  flipDirection,
   height,
   front,
   back,
 }: RevisionFlipCardProps) {
   const spin = useSharedValue(0);
+  const prevFlippedRef = useRef(isFlipped);
 
   useLayoutEffect(() => {
     spin.value = 0;
+    prevFlippedRef.current = false;
   }, [cardKey, spin]);
 
   useEffect(() => {
-    spin.value = withSpring(isFlipped ? 180 : 0, SPRING);
-  }, [isFlipped, spin]);
+    if (prevFlippedRef.current === isFlipped) {
+      return;
+    }
+    prevFlippedRef.current = isFlipped;
+    spin.value = withSpring(spin.value + flipDirection * 180, SPRING);
+  }, [isFlipped, flipDirection, spin]);
 
-  const frontStyle = useAnimatedStyle(() => {
-    const rotateY = interpolate(spin.value, [0, 180], [0, 180]);
-    return {
-      transform: [{ perspective: 1400 }, { rotateY: `${rotateY}deg` }],
-    };
-  });
+  const frontStyle = useAnimatedStyle(() => ({
+    transform: [{ perspective: 1400 }, { rotateY: `${spin.value}deg` }],
+  }));
 
-  const backStyle = useAnimatedStyle(() => {
-    const rotateY = interpolate(spin.value, [0, 180], [180, 360]);
-    return {
-      transform: [{ perspective: 1400 }, { rotateY: `${rotateY}deg` }],
-    };
-  });
+  const backStyle = useAnimatedStyle(() => ({
+    transform: [
+      { perspective: 1400 },
+      { rotateY: `${spin.value + 180}deg` },
+    ],
+  }));
 
-  /**
-   * Druga warstwa w DOM jest domyślnie „nad” pierwszą, bez pointerEvents tyl
-   * przechwytuje klik (np. mysz na symulatorze), mimo że wizualnie widać przód.
-   */
   const frontPointer = isFlipped ? "none" : "auto";
   const backPointer = isFlipped ? "auto" : "none";
 

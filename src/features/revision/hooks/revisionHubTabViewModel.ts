@@ -1,5 +1,8 @@
-import type { RevisionMode } from "@/src/types/revisionSession";
-import type { RevisionSessionConfig, RevisionSessionPhase } from "@/src/types/revisionSession";
+import type {
+  RevisionMode,
+  RevisionSessionConfig,
+  RevisionSessionPhase,
+} from "@/src/types/revisionSession";
 import type { VocabularyWord } from "@/src/types/words";
 
 /**
@@ -7,7 +10,6 @@ import type { VocabularyWord } from "@/src/types/words";
  * Order matches `RevisionHubTabScreen`: data-source / gate states before session UI.
  */
 export type RevisionHubTabViewKind =
-  | "settings_transport_error"
   | "settings_pending_shell"
   | "onboarding_required"
   | "revision_hub_surface"
@@ -28,10 +30,7 @@ export type RevisionHubTabViewInput = {
 export function computeRevisionHubTabViewKind(
   input: RevisionHubTabViewInput,
 ): RevisionHubTabViewKind {
-  if (input.settingsFetchError) {
-    return "settings_transport_error";
-  }
-  if (!input.settingsResolved) {
+  if (!input.settingsResolved || input.settingsFetchError) {
     return "settings_pending_shell";
   }
   if (input.onboardingRequiredConfirmed) {

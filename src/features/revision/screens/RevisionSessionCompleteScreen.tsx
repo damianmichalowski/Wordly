@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, { FadeInDown, ZoomIn } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -23,28 +24,56 @@ export type RevisionSessionCompleteScreenProps = {
   sessionStats: RevisionSessionCompletionStats;
   onBackToRevisionHub: () => void;
   onBackToHome: () => void;
+  onRepeatDifficultSession?: () => void;
   /** Daily Review session: updated streak count from the server. */
   dailyReviewStreak?: number;
   /** Optional streak-related trophy title to show inline (no separate popup). */
   streakTrophyTitle?: string;
 };
 
+function StatRow({ label, value }: { label: string; value: number }) {
+  return (
+    <View style={styles.statRow}>
+      <Text style={styles.statLabel}>{label}</Text>
+      <Text style={styles.statValue}>{value}</Text>
+    </View>
+  );
+}
+
 export function RevisionSessionCompleteScreen({
   sessionStats,
   onBackToRevisionHub,
   onBackToHome,
+  onRepeatDifficultSession,
   dailyReviewStreak,
   streakTrophyTitle,
 }: RevisionSessionCompleteScreenProps) {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
     logger.info(LogTag.REVISION, "Completion screen opened");
   }, []);
 
-  const durationLabel = formatSessionDurationMs(sessionStats.sessionDurationMs);
+  const endedEarly = sessionStats.endedEarly === true;
+  const answerStats = sessionStats.answerStats;
+  const difficultSummary = sessionStats.difficultWordsCompletion;
+  const showDifficultSummary =
+    sessionStats.mode.startsWith("difficultWords") && difficultSummary;
   const showDailyStreak =
     sessionStats.mode === "daily" && typeof dailyReviewStreak === "number";
+  const durationLabel = formatSessionDurationMs(sessionStats.sessionDurationMs);
+  const hasDifficultRemaining =
+    showDifficultSummary && difficultSummary.stillDifficult > 0;
+  const noDifficultLeft =
+    showDifficultSummary && difficultSummary.stillDifficult === 0;
+
+  const title = endedEarly
+    ? t("revision.hub.sessionComplete.titleEarly")
+    : t("revision.hub.sessionComplete.titleComplete");
+  const subtitle = endedEarly
+    ? t("revision.hub.sessionComplete.subtitleEarly")
+    : t("revision.hub.sessionComplete.subtitleComplete");
 
   return (
     <View
@@ -59,18 +88,55 @@ export function RevisionSessionCompleteScreen({
       <View style={styles.centeredContent}>
         <Animated.View entering={ZoomIn.duration(400)} style={styles.iconWrap}>
           <Ionicons
-            name="checkmark-circle"
+            name={endedEarly ? "checkmark-circle-outline" : "checkmark-circle"}
             size={56}
-            color={StitchColors.secondary}
+            color={endedEarly ? StitchColors.primary : StitchColors.secondary}
           />
         </Animated.View>
 
-        <Animated.View entering={FadeInDown.duration(380).delay(60)}>
-          <Text style={styles.title}>Nice work</Text>
-          <Text style={styles.subtitle}>
-            You reviewed {sessionStats.cardsReviewed}{" "}
-            {sessionStats.cardsReviewed === 1 ? "word" : "words"}
-          </Text>
+        <Animated.View
+          entering={FadeInDown.duration(380).delay(60)}
+          style={styles.textBlock}
+        >
+          <Text style={styles.title}>{title}</Text>
+          <Text style={styles.subtitle}>{subtitle}</Text>
+
+          {answerStats ? (
+            <View style={styles.statsCard}>
+              <StatRow
+                label={t("revision.hub.sessionComplete.statReviewed")}
+                value={answerStats.reviewed}
+              />
+              <StatRow
+                label={t("revision.hub.sessionComplete.statKnow")}
+                value={answerStats.knowCount}
+              />
+              <StatRow
+                label={t("revision.hub.sessionComplete.statDontKnow")}
+                value={answerStats.dontKnowCount}
+              />
+            </View>
+          ) : null}
+
+          {showDifficultSummary ? (
+            <View style={styles.statsCard}>
+              <StatRow
+                label={t("revision.hub.sessionComplete.statMastered")}
+                value={difficultSummary.mastered}
+              />
+              <StatRow
+                label={t("revision.hub.sessionComplete.statStillDifficult")}
+                value={difficultSummary.stillDifficult}
+              />
+            </View>
+          ) : null}
+
+          {noDifficultLeft ? (
+            <Text style={styles.positiveNote}>
+              {t("revision.hub.sessionComplete.noDifficultLeft")}
+            </Text>
+          ) : null}
+
           {showDailyStreak ? (
             <View style={styles.streakBlock}>
               <View
@@ -79,8 +145,9 @@ export function RevisionSessionCompleteScreen({
               >
                 <Ionicons name="flame" size={22} color="#E65100" />
                 <Text style={styles.streakFire}>
-                  {dailyReviewStreak}{" "}
-                  {dailyReviewStreak === 1 ? "day" : "days"} in a row
+                  {t("revision.hub.sessionComplete.streakDays", {
+                    count: dailyReviewStreak,
+                  })}
                 </Text>
               </View>
               {streakTrophyTitle ? (
@@ -95,7 +162,12 @@ export function RevisionSessionCompleteScreen({
               ) : null}
             </View>
           ) : null}
-          <Text style={styles.meta}>Session time: {durationLabel}</Text>
+
+          <Text style={styles.meta}>
+            {t("revision.hub.sessionComplete.sessionTime", {
+              duration: durationLabel,
+            })}
+          </Text>
         </Animated.View>
       </View>
 
@@ -108,10 +180,28 @@ export function RevisionSessionCompleteScreen({
           ]}
           onPress={onBackToRevisionHub}
           accessibilityRole="button"
-          accessibilityLabel="Back to Revision Hub"
+          accessibilityLabel={t("revision.hub.sessionComplete.backToHub")}
         >
-          <Text style={styles.primaryBtnText}>Back to Revision Hub</Text>
+          <Text style={styles.primaryBtnText}>
+            {t("revision.hub.sessionComplete.backToHub")}
+          </Text>
         </Pressable>
+        {hasDifficultRemaining && onRepeatDifficultSession ? (
+          <Pressable
+            android_ripple={ANDROID_RIPPLE_SURFACE}
+            style={({ pressed }) => [
+              styles.secondaryBtn,
+              surfacePressStyle(pressed, false),
+            ]}
+            onPress={onRepeatDifficultSession}
+            accessibilityRole="button"
+            accessibilityLabel={t("revision.hub.sessionComplete.repeatDifficult")}
+          >
+            <Text style={styles.secondaryBtnText}>
+              {t("revision.hub.sessionComplete.repeatDifficult")}
+            </Text>
+          </Pressable>
+        ) : null}
         <Pressable
           android_ripple={ANDROID_RIPPLE_SURFACE}
           style={({ pressed }) => [
@@ -120,9 +210,11 @@ export function RevisionSessionCompleteScreen({
           ]}
           onPress={onBackToHome}
           accessibilityRole="button"
-          accessibilityLabel="Back to Home"
+          accessibilityLabel={t("revision.hub.sessionComplete.backToHome")}
         >
-          <Text style={styles.secondaryBtnText}>Back to Home</Text>
+          <Text style={styles.secondaryBtnText}>
+            {t("revision.hub.sessionComplete.backToHome")}
+          </Text>
         </Pressable>
       </View>
     </View>
@@ -136,7 +228,6 @@ const styles = StyleSheet.create({
     backgroundColor: StitchColors.surface,
     alignItems: "stretch",
   },
-  /** Ikona + teksty wyśrodkowane w pionie w wolnej przestrzeni nad przyciskami. */
   centeredContent: {
     flex: 1,
     justifyContent: "center",
@@ -149,6 +240,11 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     marginBottom: 4,
   },
+  textBlock: {
+    width: "100%",
+    alignItems: "center",
+    gap: 12,
+  },
   title: {
     fontSize: 28,
     fontFamily: StitchFonts.headline,
@@ -157,14 +253,46 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
   },
   subtitle: {
-    marginTop: 10,
-    fontSize: 17,
+    fontSize: 16,
     fontFamily: StitchFonts.bodyMedium,
     color: StitchColors.onSurfaceVariant,
     textAlign: "center",
+    lineHeight: 22,
+  },
+  statsCard: {
+    width: "100%",
+    maxWidth: 320,
+    borderRadius: StitchRadius.lg,
+    backgroundColor: StitchColors.surfaceContainerLow,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  statRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  statLabel: {
+    fontSize: 15,
+    fontFamily: StitchFonts.body,
+    color: StitchColors.onSurfaceVariant,
+  },
+  statValue: {
+    fontSize: 17,
+    fontFamily: StitchFonts.bodySemi,
+    color: StitchColors.onSurface,
+  },
+  positiveNote: {
+    fontSize: 15,
+    fontFamily: StitchFonts.bodyMedium,
+    color: StitchColors.secondary,
+    textAlign: "center",
+    lineHeight: 22,
+    paddingHorizontal: 8,
   },
   meta: {
-    marginTop: 8,
     fontSize: 14,
     fontFamily: StitchFonts.body,
     color: StitchColors.onSurfaceVariant,
@@ -172,7 +300,6 @@ const styles = StyleSheet.create({
     opacity: 0.9,
   },
   streakBlock: {
-    marginTop: 14,
     alignItems: "center",
     gap: 8,
     width: "100%",
@@ -184,13 +311,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 8,
     flexWrap: "wrap",
-    paddingHorizontal: 4,
   },
   streakFire: {
     fontSize: 17,
     fontFamily: StitchFonts.bodySemi,
     color: StitchColors.onSurface,
-    textAlign: "left",
     flexShrink: 1,
   },
   streakTrophyRow: {
@@ -207,7 +332,7 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   actions: {
-    gap: 12,
+    gap: 10,
     width: "100%",
     maxWidth: 400,
     alignSelf: "center",

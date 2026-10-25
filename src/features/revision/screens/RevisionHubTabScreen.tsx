@@ -1,13 +1,26 @@
+import { useFocusEffect } from '@react-navigation/native';
+import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { defaultRevisionSessionSize } from '@/src/features/revision/revisionSessionSize';
+import {
+  consumePendingRevisionAutoSession,
+} from '@/src/features/revision/revisionPendingAutoSession';
+import { getRevisionHubStats } from '@/src/features/revision/services/revisionRpc.service';
+import { queryKeys } from '@/src/lib/query/queryKeys';
+
 import { CenteredMessageCta } from '@/src/components/ui/CenteredMessageCta';
-import { TransportRetryMessage } from '@/src/components/ui/TransportRetryMessage';
+import { EndSessionConfirmSheet } from '@/src/features/revision/components/EndSessionConfirmSheet';
 import { RevisionFlashcardMode } from '@/src/features/revision/components/RevisionFlashcardMode';
 import { RevisionHub } from '@/src/features/revision/components/RevisionHub';
 import { RevisionHubTabDeferredShell } from '@/src/features/revision/components/RevisionHubTabDeferredShell';
 import { useRevisionHubScreenData } from '@/src/features/revision/hooks/useRevisionHubScreenData';
+import { buildRevisionSessionCompleteParams } from '@/src/features/revision/revisionSessionCompletionNav';
 import { getFlashSessionLabel } from '@/src/features/revision/revisionSessionUi';
+import type { RevisionSessionCompletionStats } from '@/src/types/revisionSession';
 import { StitchColors } from '@/src/theme/wordlyStitchTheme';
 import { logUserAction } from '@/src/utils/userActionLog';
 
@@ -16,35 +29,82 @@ import { logUserAction } from '@/src/utils/userActionLog';
  */
 export default function RevisionHubTabScreen() {
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const { t } = useTranslation();
   const data = useRevisionHubScreenData();
+  const [endSessionSheetVisible, setEndSessionSheetVisible] = useState(false);
   const {
     viewKind,
-    settingsRetryBusy,
-    hubStatsRetryBusy,
     hubStatsReady,
     hubUnlockEmptyConfirmed,
-    knownWords,
     sessionPhase,
     sessionConfig,
+    sessionStartedOffline,
     sessionFetchPending,
     enterSession,
     exitSessionToHub,
-    cancelHubRevisionSession,
     hubCounts,
     dailyRevisionCompletedToday,
     currentDailyReviewStreak,
-    mode,
     flashDeck,
     index,
     isFlipped,
+    lastFlipDirection,
     activeCard,
     completeRevisionSession,
+    difficultWordsCount,
+    difficultSessionAnswerError,
+    submitFlashcardKnow,
+    submitFlashcardDontKnow,
+    undoFlashcardAnswer,
+    canUndoFlashcard,
+    getDifficultDisplayStreak,
     flip,
-    next,
-    previous,
-    hubLoadError,
-    refresh,
   } = data;
+
+  const isDifficultSession = sessionConfig?.kind === "difficultWords";
+
+  const navigateToSessionComplete = useCallback(
+    (stats: RevisionSessionCompletionStats) => {
+      router.push({
+        pathname: '/revision-session-complete',
+        params: buildRevisionSessionCompleteParams(stats),
+      });
+    },
+    [router],
+  );
+
+  const finalizeSession = useCallback(
+    async (endedEarly: boolean) => {
+      const stats = await completeRevisionSession({ endedEarly });
+      if (stats) {
+        navigateToSessionComplete(stats);
+      }
+    },
+    [completeRevisionSession, navigateToSessionComplete],
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      const pending = consumePendingRevisionAutoSession();
+      if (pending !== 'difficultWords') {
+        return;
+      }
+
+      void (async () => {
+        const hub = await queryClient.fetchQuery({
+          queryKey: queryKeys.revision.hubStats,
+          queryFn: getRevisionHubStats,
+        });
+        const count = hub?.difficultWords?.availableCount ?? 0;
+        if (count <= 0) {
+          return;
+        }
+        const limit = defaultRevisionSessionSize(count);
+        enterSession({ kind: 'difficultWords', limit });
+      })();
+    }, [enterSession, queryClient]),
+  );
 
   const hubProps = {
     knownTotal: hubCounts.all,
@@ -53,34 +113,11 @@ export default function RevisionHubTabScreen() {
     counts: hubCounts,
     dailyReviewCompletedToday: dailyRevisionCompletedToday,
     dailyReviewStreak: currentDailyReviewStreak,
+    difficultWordsCount,
     onSelectSession: enterSession,
-    hubStatsLoadError: hubLoadError,
-    hubStatsRetryBusy,
-    onRetryHubStats: () => {
-      void refresh();
-    },
   } as const;
 
   switch (viewKind) {
-    case 'settings_transport_error':
-      return (
-        <SafeAreaView
-          style={{ flex: 1, backgroundColor: StitchColors.surface }}
-          edges={['top', 'bottom']}
-        >
-          <TransportRetryMessage
-            variant="screen"
-            isRetrying={settingsRetryBusy}
-            onRetry={() => {
-              logUserAction('button_press', {
-                target: 'revision_hub_settings_fetch_retry',
-              });
-              void refresh();
-            }}
-          />
-        </SafeAreaView>
-      );
-
     case 'settings_pending_shell':
       return <RevisionHubTabDeferredShell />;
 
@@ -118,69 +155,55 @@ export default function RevisionHubTabScreen() {
 
     case 'flashcard_session':
       return (
-        <RevisionFlashcardMode
-          flashDeck={flashDeck}
-          index={index}
-          activeCard={activeCard}
-          isFlipped={isFlipped}
-          sessionLoading={sessionFetchPending}
-          onRetrySessionLoad={
-            sessionConfig
-              ? () => {
-                  void enterSession(sessionConfig);
-                }
-              : undefined
-          }
-          onAbortSession={cancelHubRevisionSession}
-          flip={flip}
-          next={next}
-          previous={previous}
-          sessionLabel={
-            sessionConfig ? getFlashSessionLabel(sessionConfig) : undefined
-          }
-          onLastCardContinue={
-            sessionPhase === 'session'
-              ? () => {
-                  void (async () => {
-                    const stats = await completeRevisionSession();
-                    if (stats) {
-                      const dr = stats.dailyReviewCompletion;
-                      const pending = dr?.pendingEvents ?? [];
-                      const streakTrophyEv =
-                        dr?.pendingEvents?.find(
-                          (e) => e.source === 'streak_daily_review',
-                        ) ?? null;
-                      router.push({
-                        pathname: '/revision-session-complete',
-                        params: {
-                          cardsReviewed: String(stats.cardsReviewed),
-                          sessionDurationMs: String(stats.sessionDurationMs),
-                          mode: stats.mode,
-                          ...(stats.mode === 'daily' && dr
-                            ? {
-                                dailyReviewStreak: String(
-                                  dr.currentDailyReviewStreak,
-                                ),
-                                ...(streakTrophyEv
-                                  ? { streakTrophyTitle: streakTrophyEv.title }
-                                  : {}),
-                              }
-                            : {}),
-                          ...(pending.length > 0
-                            ? {
-                                achievementEventIds: pending
-                                  .map((e) => e.eventId)
-                                  .join(','),
-                              }
-                            : {}),
-                        },
-                      });
-                    }
-                  })();
-                }
-              : undefined
-          }
-        />
+        <>
+          <RevisionFlashcardMode
+            flashDeck={flashDeck}
+            index={index}
+            activeCard={activeCard}
+            isFlipped={isFlipped}
+            sessionLoading={sessionFetchPending}
+            onRetrySessionLoad={
+              sessionConfig
+                ? () => {
+                    void enterSession(sessionConfig);
+                  }
+                : undefined
+            }
+            onEndSession={() => setEndSessionSheetVisible(true)}
+            flip={flip}
+            lastFlipDirection={lastFlipDirection}
+            submitFlashcardKnow={submitFlashcardKnow}
+            submitFlashcardDontKnow={submitFlashcardDontKnow}
+            undoFlashcardAnswer={undoFlashcardAnswer}
+            canUndoFlashcard={canUndoFlashcard}
+            sessionLabel={
+              sessionConfig ? getFlashSessionLabel(sessionConfig, t) : undefined
+            }
+            flashcardVariant={isDifficultSession ? 'difficultWords' : 'default'}
+            difficultDisplayStreak={
+              activeCard ? getDifficultDisplayStreak(activeCard) : 0
+            }
+            difficultSessionAnswerError={difficultSessionAnswerError}
+            offlineDailyNoStreak={
+              sessionConfig?.kind === 'daily' && sessionStartedOffline
+            }
+            onLastCardContinue={
+              sessionPhase === 'session'
+                ? () => {
+                    void finalizeSession(false);
+                  }
+                : undefined
+            }
+          />
+          <EndSessionConfirmSheet
+            visible={endSessionSheetVisible}
+            onContinue={() => setEndSessionSheetVisible(false)}
+            onConfirmEnd={() => {
+              setEndSessionSheetVisible(false);
+              void finalizeSession(true);
+            }}
+          />
+        </>
       );
 
     case 'revision_hub_surface':

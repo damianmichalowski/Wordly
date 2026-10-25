@@ -1,5 +1,6 @@
 import { ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTranslation } from "react-i18next";
 
 import { ScreenHeader } from "@/src/components/layout/ScreenHeader";
 import { revisionScreenStyles as styles } from "@/src/features/revision/revisionScreenStyles";
@@ -10,10 +11,11 @@ import { StitchColors, StitchRadius } from "@/src/theme/wordlyStitchTheme";
  * (unlock / lock copy) before we know onboarding vs authenticated profile.
  */
 export function RevisionHubTabDeferredShell() {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   return (
     <View style={styles.listScreen}>
-      <ScreenHeader title="Revision Hub" />
+      <ScreenHeader title={t("revision.hubTitle")} />
       <ScrollView
         style={styles.hubScroll}
         contentContainerStyle={[

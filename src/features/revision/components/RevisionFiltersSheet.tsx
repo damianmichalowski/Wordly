@@ -133,7 +133,7 @@ export function RevisionFiltersSheet({
       duration: 260,
       easing: Easing.out(Easing.cubic),
     });
-  }, [timeOrder, dateSegWidth]);
+  }, [timeOrder, dateSegWidth, dateThumbX]);
 
   const onDateSegmentLayout = useCallback(
     (e: LayoutChangeEvent) => {
