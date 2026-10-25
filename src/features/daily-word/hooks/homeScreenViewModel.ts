@@ -1,3 +1,4 @@
+import { progressBarFillPercent } from "@/src/components/ui/LearningTrackOptionRow";
 import type { AchievementEventPayload } from "@/src/features/achievements/types/achievementEvents.types";
 import type { LearningTrackProgress } from "@/src/features/profile/services/learningProgress.service";
 import type { UserProfileSettings } from "@/src/features/profile/types/profile.types";
@@ -7,22 +8,8 @@ import type {
   WordSense,
 } from "@/src/features/word-details/types/wordDetails.types";
 import { groupSensesByPartOfSpeech } from "@/src/features/daily-word/utils/groupSensesByPartOfSpeech";
+import { i18n } from "@/src/i18n/i18n";
 import type { VocabularyWord } from "@/src/types/words";
-
-import { HOME_SHOW_DAILY_HEADER_AND_TRACK_PILL } from "../homeScreen.constants";
-
-/** Count 2–4 → „słowa”, 1 → „słowo”, else „słów”. */
-export function polishWordsForm(n: number): string {
-  if (n === 1) {
-    return "słowo";
-  }
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) {
-    return "słowa";
-  }
-  return "słów";
-}
 
 export function computeTrackCompleted(
   trackProgress: LearningTrackProgress | null | undefined,
@@ -54,10 +41,13 @@ export function resolveTrackLabel(
   if (!profileSettings) return null;
   if (profileSettings.learning_mode_type === "difficulty") {
     const lvl = profileSettings.learning_level;
-    if (!lvl) return "Difficulty";
+    if (!lvl) return i18n.t("home.trackFallbackDifficulty");
     return lvl.charAt(0).toUpperCase() + lvl.slice(1);
   }
-  return profileSettings.selected_category?.name ?? "Category";
+  return (
+    profileSettings.selected_category?.name ??
+    i18n.t("home.trackFallbackCategory")
+  );
 }
 
 export type HomeWordPanel = {
@@ -74,7 +64,6 @@ export type HomeWordPanel = {
 export type HomeMainPanel =
   | { kind: "skeleton"; showBridgeHint: boolean }
   | { kind: "no_daily_word" }
-  | { kind: "transport_retry"; showSkeletonInsteadOfMessage: boolean }
   | HomeWordPanel
   | { kind: "fallback_skeleton" };
 
@@ -112,12 +101,8 @@ export function computeHomeMainPanel(
     return { kind: "no_daily_word" };
   }
 
-  const showDailyTransportRetry = daily.loadFailed || stuckDailyLoad;
-  if (showDailyTransportRetry) {
-    return {
-      kind: "transport_retry",
-      showSkeletonInsteadOfMessage: daily.transportFetchBusy,
-    };
+  if (daily.loadFailed || stuckDailyLoad) {
+    return { kind: "skeleton", showBridgeHint: false };
   }
 
   const details = daily.data?.details ?? null;
@@ -171,14 +156,11 @@ export function computeMainScrollCentered(panel: HomeMainPanel): boolean {
   if (panel.kind === "no_daily_word") {
     return true;
   }
-  if (panel.kind === "transport_retry") {
-    return true;
-  }
   return false;
 }
 
 export function computeFooterVisible(panel: HomeMainPanel): boolean {
-  return panel.kind === "word" || panel.kind === "transport_retry";
+  return panel.kind === "word";
 }
 
 export function computeHasWordContent(panel: HomeMainPanel): boolean {
@@ -193,7 +175,6 @@ export type CelebrateViewInput = {
 
 export function buildCelebrateView(input: CelebrateViewInput) {
   const n = input.trackProgress.availableCount;
-  const wordsForm = polishWordsForm(n);
   const label = input.trackLabel ?? "…";
   const hasTrophies = input.achievementQueue.length > 0;
   const showTrophyDescription =
@@ -202,7 +183,6 @@ export function buildCelebrateView(input: CelebrateViewInput) {
   const heroTrophySize = hasTrophies ? 52 : 64;
   return {
     n,
-    wordsForm,
     trackLabelDisplay: label,
     hasTrophies,
     showTrophyDescription,
@@ -218,15 +198,6 @@ export function computeHeaderPillProps(args: {
   trackProgress: LearningTrackProgress | null | undefined;
   isLoadingTrack: boolean;
 }) {
-  if (!HOME_SHOW_DAILY_HEADER_AND_TRACK_PILL) {
-    return {
-      show: false as const,
-      isInitialProfileLoading: false,
-      trackLabel: null as string | null,
-      progressPercent: null as number | null,
-      isPercentPending: false,
-    };
-  }
   const isInitialProfileLoading =
     args.isLoadingProfile && !args.profileSettings;
   const trackLabel = resolveTrackLabel(args.profileSettings ?? null);
@@ -239,12 +210,20 @@ export function computeHeaderPillProps(args: {
   }
   const isPercentPending =
     args.isLoadingTrack && !args.trackProgress;
+  const availableCount = args.trackProgress?.availableCount ?? 0;
+  const learnedPct =
+    progressPercent === null ? 0 : Math.min(100, Math.max(0, progressPercent));
+  const barFillPercent =
+    availableCount > 0
+      ? progressBarFillPercent(learnedPct, availableCount)
+      : 0;
   return {
-    show: true as const,
     isInitialProfileLoading,
     trackLabel,
     progressPercent,
     isPercentPending,
+    availableCount,
+    barFillPercent,
   };
 }
 

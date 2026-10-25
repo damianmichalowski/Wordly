@@ -15,6 +15,8 @@ import Animated, {
     withTiming,
 } from "react-native-reanimated";
 
+import { useTranslation } from "react-i18next";
+
 import {
     StitchColors,
     StitchFonts,
@@ -70,6 +72,7 @@ export function TrackProgressPill({
   isPercentPending = false,
   isInitialProfileLoading = false,
 }: TrackProgressPillProps) {
+  const { t } = useTranslation();
   const pct =
     progressPercent === null ? 0 : Math.min(100, Math.max(0, progressPercent));
 
@@ -106,12 +109,15 @@ export function TrackProgressPill({
       : `${Math.round(pct)}%`;
 
   const a11yLabel = isInitialProfileLoading
-    ? "Postęp toru, ładowanie"
+    ? t("home.a11yPillLoading")
     : isPercentPending
-      ? `${trackName}, ładowanie postępu`
+      ? t("home.a11yPillPending", { trackName })
       : progressPercent === null
-        ? `${trackName}, brak wartości procentowej`
-        : `${trackName}, ${Math.round(pct)} procent`;
+        ? t("home.a11yPillNoPercent", { trackName })
+        : t("home.a11yPillPercent", {
+            trackName,
+            pct: String(Math.round(pct)),
+          });
 
   const blurProps = Platform.OS === "ios" ? BLUR_IOS : BLUR_ANDROID;
 

@@ -1,12 +1,16 @@
 import { Alert } from 'react-native'
 
 import type { OnboardingDraft } from '@/src/features/onboarding/OnboardingProvider'
-import { invalidateAfterProfileOrSettingsChange } from '@/src/lib/query/invalidateAfterMutations'
-import { queryClient } from '@/src/lib/query/queryClient'
 import {
+  getOnboardingOptions,
   invalidateTodayDailyWord,
   upsertUserProfileSettings,
 } from '@/src/features/profile/services/profile.service'
+import { appUiLocaleFromNativeLanguage } from '@/src/features/profile/types/profile.types'
+import { applyAppLocale, i18n } from '@/src/i18n/i18n'
+import { setCachedAppLocale } from '@/src/i18n/uiLocaleStorage'
+import { invalidateAfterProfileOrSettingsChange } from '@/src/lib/query/invalidateAfterMutations'
+import { queryClient } from '@/src/lib/query/queryClient'
 import { getAuthenticatedUserId } from '@/src/services/auth/ensureSession'
 import { setOnboardingComplete } from '@/src/services/storage/onboardingStorage'
 import { syncWidgetSnapshotFromApp } from '@/src/services/widgets/syncWidgetSnapshot'
@@ -18,28 +22,51 @@ export async function completeOnboardingFromDraft(
   const uid = await getAuthenticatedUserId();
   if (!uid) {
     Alert.alert(
-      'Brak sesji',
-      'Nie jesteś zalogowany. Wróć na początek onboardingu i zaloguj się przez Google lub Apple.',
+      i18n.t('onboarding.alerts.noSessionTitle'),
+      i18n.t('onboarding.alerts.noSessionBody'),
     );
     return { ok: false };
   }
 
   if (!draft.nativeLanguageId || !draft.learningLanguageId) {
-    Alert.alert('Missing data', 'Please select both languages.')
-    return { ok: false }
+    Alert.alert(
+      i18n.t('onboarding.alerts.missingDataTitle'),
+      i18n.t('onboarding.alerts.missingDataBody'),
+    );
+    return { ok: false };
   }
   if (draft.nativeLanguageId === draft.learningLanguageId) {
-    Alert.alert('Invalid selection', 'Native and learning language must be different.')
-    return { ok: false }
+    Alert.alert(
+      i18n.t('onboarding.alerts.invalidSelectionTitle'),
+      i18n.t('onboarding.alerts.invalidSelectionBody'),
+    );
+    return { ok: false };
   }
   if (draft.learningModeType === 'difficulty' && !draft.learningLevel) {
-    Alert.alert('Missing data', 'Please select your difficulty level.')
-    return { ok: false }
+    Alert.alert(
+      i18n.t('onboarding.alerts.missingLevelTitle'),
+      i18n.t('onboarding.alerts.missingLevelBody'),
+    );
+    return { ok: false };
   }
   if (draft.learningModeType === 'category' && !draft.selectedCategoryId) {
-    Alert.alert('Missing data', 'Please select a category.')
-    return { ok: false }
+    Alert.alert(
+      i18n.t('onboarding.alerts.missingCategoryTitle'),
+      i18n.t('onboarding.alerts.missingCategoryBody'),
+    );
+    return { ok: false };
   }
+
+  const options = await getOnboardingOptions();
+  const native = options.languages.find((l) => l.id === draft.nativeLanguageId);
+  if (!native) {
+    Alert.alert(
+      i18n.t('onboarding.alerts.missingDataTitle'),
+      i18n.t('onboarding.alerts.missingDataBody'),
+    );
+    return { ok: false };
+  }
+  const uiLocale = appUiLocaleFromNativeLanguage(native);
 
   await upsertUserProfileSettings({
     p_native_language_id: draft.nativeLanguageId,
@@ -49,7 +76,9 @@ export async function completeOnboardingFromDraft(
       draft.learningModeType === 'difficulty' ? draft.learningLevel ?? undefined : undefined,
     p_selected_category_id:
       draft.learningModeType === 'category' ? draft.selectedCategoryId ?? undefined : undefined,
-  })
+  });
+  await applyAppLocale(uiLocale);
+  await setCachedAppLocale(uiLocale);
   await invalidateTodayDailyWord()
   invalidateAfterProfileOrSettingsChange(queryClient)
   await setOnboardingComplete();

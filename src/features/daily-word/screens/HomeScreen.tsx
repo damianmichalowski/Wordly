@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, type ReactNode } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -9,11 +9,19 @@ import {
   Text,
   View,
 } from "react-native";
-import Animated, { FadeInDown, ZoomIn } from "react-native-reanimated";
+import Animated, {
+  Easing,
+  FadeInDown,
+  ZoomIn,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTranslation } from "react-i18next";
 
 import { ScreenHeader } from "@/src/components/layout/ScreenHeader";
-import { TrackProgressPill } from "@/src/components/ui/TrackProgressPill";
+import { WordReportEntry } from "@/src/features/word-details/components/WordReportEntry";
 import {
     ANDROID_RIPPLE_ICON_ROUND,
     ANDROID_RIPPLE_PRIMARY,
@@ -22,9 +30,7 @@ import {
     roundIconPressStyle,
 } from "@/src/components/ui/interaction";
 import { AchievementUnlockModal } from "@/src/features/achievements";
-import { TransportRetryMessage } from "@/src/components/ui/TransportRetryMessage";
 import { DailyWordScreenSkeleton } from "@/src/features/daily-word/components/DailyWordScreenSkeleton";
-import { HOME_SHOW_DAILY_HEADER_AND_TRACK_PILL } from "@/src/features/daily-word/homeScreen.constants";
 import { useHomeScreenData } from "@/src/features/daily-word/hooks/useHomeScreenData";
 import { dailyWordCardStyles as card } from "@/src/features/daily-word/styles/dailyWordCard.styles";
 import {
@@ -47,6 +53,47 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
   },
+  /** Jedna linia: tryb · etykieta, pasek jak w ustawieniach, %. */
+  dailyTrackQuickRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 24,
+    paddingTop: 4,
+    paddingBottom: 12,
+    alignSelf: "stretch",
+  },
+  dailyTrackQuickLabel: {
+    flexShrink: 1,
+    maxWidth: "46%",
+    fontSize: 13,
+    fontFamily: StitchFonts.bodyMedium,
+    color: StitchColors.onSurface,
+  },
+  dailyTrackQuickBarWrap: {
+    flex: 1,
+    minWidth: 56,
+    justifyContent: "center",
+  },
+  dailyTrackQuickTrack: {
+    height: 6,
+    borderRadius: StitchRadius.full,
+    backgroundColor: StitchColors.surfaceContainerHigh,
+    overflow: "hidden",
+  },
+  dailyTrackQuickFill: {
+    height: "100%",
+    borderRadius: StitchRadius.full,
+    backgroundColor: StitchColors.secondary,
+  },
+  dailyTrackQuickPct: {
+    fontSize: 13,
+    fontFamily: StitchFonts.bodyMedium,
+    fontVariant: ["tabular-nums"],
+    color: StitchColors.onSurfaceVariant,
+    minWidth: 40,
+    textAlign: "right",
+  },
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: 24,
@@ -62,14 +109,6 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: StitchColors.surfaceContainerHigh,
     gap: 10,
-  },
-  markKnownInlineToast: {
-    fontSize: 13,
-    fontFamily: StitchFonts.body,
-    color: StitchColors.error,
-    textAlign: "center",
-    lineHeight: 18,
-    paddingHorizontal: 8,
   },
   centered: {
     flex: 1,
@@ -333,7 +372,37 @@ const styles = StyleSheet.create({
   },
 });
 
+const DAILY_TRACK_FILL_MS = 420;
+
+/** Pasek postępu toru — płynne dociąganie szerokości przy zmianie %. */
+function DailyWordTrackProgressBar({ fillPercent }: { fillPercent: number }) {
+  const progress = useSharedValue(0);
+
+  useEffect(() => {
+    const next = Math.min(100, Math.max(0, fillPercent));
+    progress.value = withTiming(next, {
+      duration: DAILY_TRACK_FILL_MS,
+      easing: Easing.out(Easing.cubic),
+    });
+    // `progress` — shared value (stable); animujemy przy zmianie fillPercent.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- see above
+  }, [fillPercent]);
+
+  const fillStyle = useAnimatedStyle(() => ({
+    width: `${progress.value}%`,
+  }));
+
+  return (
+    <View style={styles.dailyTrackQuickBarWrap}>
+      <View style={styles.dailyTrackQuickTrack}>
+        <Animated.View style={[styles.dailyTrackQuickFill, fillStyle]} />
+      </View>
+    </View>
+  );
+}
+
 export default function HomeScreen() {
+  const { t } = useTranslation();
   const widgetSyncedOnceRef = useRef(false);
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -343,7 +412,7 @@ export default function HomeScreen() {
     isLoading,
     canAct,
     isSaving,
-    markKnownInlineError,
+    markKnownFailed,
     markKnown,
     transportFetchBusy,
     refresh,
@@ -427,7 +496,7 @@ export default function HomeScreen() {
       visible={view.achievementModalVisible}
       title={view.activeAchievement?.title ?? ""}
       subtitle={view.activeAchievement?.description ?? ""}
-      primaryLabel="Go to trophies"
+      primaryLabel={t("home.achievementGoToTrophies")}
       onPrimaryPress={() => {
         if (!view.activeAchievement) {
           return;
@@ -437,7 +506,7 @@ export default function HomeScreen() {
           goToTrophiesSettings();
         });
       }}
-      secondaryLabel="Close"
+      secondaryLabel={t("home.achievementClose")}
       onSecondaryPress={() => {
         if (view.activeAchievement) {
           void handleDismissAchievement(view.activeAchievement.eventId);
@@ -451,27 +520,49 @@ export default function HomeScreen() {
     />
   );
 
-  const header = view.headerPill.show ? (
-    <ScreenHeader
-      title="Daily word"
-      titleSize="small"
-      rightAccessory={
-        <TrackProgressPill
-          isInitialProfileLoading={view.headerPill.isInitialProfileLoading}
-          trackName={view.headerPill.trackLabel ?? "…"}
-          progressPercent={view.headerPill.progressPercent}
-          isPercentPending={view.headerPill.isPercentPending}
-        />
-      }
-    />
-  ) : null;
+  const hp = view.headerPill;
+  const trybLabel = hp.isInitialProfileLoading
+    ? t("home.trackModeLine", { label: "…" })
+    : t("home.trackModeLine", { label: hp.trackLabel ?? "…" });
+  const pctLabel = hp.isInitialProfileLoading
+    ? "…"
+    : hp.isPercentPending
+      ? "…"
+      : hp.progressPercent === null
+        ? "–"
+        : `${Math.round(hp.progressPercent)}%`;
+  const showBar = hp.availableCount > 0 && !hp.isInitialProfileLoading;
 
-  const screenTopPaddingStyle = useMemo(
-    () =>
-      HOME_SHOW_DAILY_HEADER_AND_TRACK_PILL
-        ? undefined
-        : { paddingTop: Math.max(insets.top, 10) },
-    [insets.top],
+  const dailyWordChrome = (
+    <>
+      <ScreenHeader title={t("home.screenTitle")} />
+      <View
+        style={styles.dailyTrackQuickRow}
+        accessibilityRole="text"
+        accessibilityLabel={
+          hp.isInitialProfileLoading
+            ? t("home.a11yTrackLoading")
+            : hp.isPercentPending
+              ? t("home.a11yTrackPending", { line: trybLabel })
+              : t("home.a11yTrackSummary", { line: trybLabel, pct: pctLabel })
+        }
+      >
+        <Text style={styles.dailyTrackQuickLabel} numberOfLines={1}>
+          {trybLabel}
+        </Text>
+        <DailyWordTrackProgressBar
+          fillPercent={showBar ? hp.barFillPercent : 0}
+        />
+        <Text
+          style={styles.dailyTrackQuickPct}
+          numberOfLines={1}
+          accessibilityElementsHidden
+          importantForAccessibility="no"
+        >
+          {pctLabel}
+        </Text>
+      </View>
+    </>
   );
 
   /** Completed track: full-screen celebration (not driven by unresolved daily fetch). */
@@ -483,8 +574,8 @@ export default function HomeScreen() {
     const heroTrophySize = c.heroTrophySize;
 
     return (
-      <View style={[styles.screen, screenTopPaddingStyle]}>
-        {header}
+      <View style={styles.screen}>
+        {dailyWordChrome}
         <View style={styles.celebrateRoot}>
           <View style={styles.celebrateCenter}>
             <View style={styles.celebrateCenterInner}>
@@ -501,7 +592,9 @@ export default function HomeScreen() {
                 entering={FadeInDown.duration(380).delay(80)}
                 style={styles.celebrateTextBlock}
               >
-                <Text style={styles.celebrateTitle}>Mega robota!</Text>
+                <Text style={styles.celebrateTitle}>
+                  {t("home.celebrateTitle")}
+                </Text>
 
                 <Text
                   style={[
@@ -509,18 +602,16 @@ export default function HomeScreen() {
                     hasTrophies && { marginTop: 14 },
                   ]}
                 >
-                  Tor{" "}
+                  {t("home.celebrateTrackDonePrefix")}
                   <Text style={styles.celebrateTrackName}>
                     {c.trackLabelDisplay}
-                  </Text>{" "}
-                  ukończony.
+                  </Text>
+                  {t("home.celebrateTrackDoneSuffix")}
                 </Text>
 
                 <View style={styles.celebrateWordsBlock}>
                   <Text style={styles.celebrateWordsLearned}>
-                    Poznałeś{" "}
-                    <Text style={styles.celebrateWordsCount}>{c.n}</Text>{" "}
-                    {c.wordsForm}!
+                    {t("home.celebrateWordsLearned", { count: c.n })}
                   </Text>
                 </View>
 
@@ -530,7 +621,7 @@ export default function HomeScreen() {
                     hasTrophies && { marginTop: 12 },
                   ]}
                 >
-                  Tak trzymaj.
+                  {t("home.celebrateKeepGoing")}
                 </Text>
 
                 <View
@@ -541,7 +632,7 @@ export default function HomeScreen() {
                 />
 
                 <Text style={styles.celebrateNextSteps}>
-                  Przejdź do ustawień i wybierz kolejny poziom lub kategorię.
+                  {t("home.celebrateNextSteps")}
                 </Text>
               </Animated.View>
 
@@ -551,10 +642,10 @@ export default function HomeScreen() {
                   style={styles.celebrateTrophiesOuter}
                 >
                   <Text style={styles.celebrateTrophiesHeading}>
-                    Nowe trofea
+                    {t("home.celebrateTrophiesHeading")}
                   </Text>
                   <Text style={styles.celebrateTrophiesSub}>
-                    Zdobyte przy ukończeniu tego toru
+                    {t("home.celebrateTrophiesSub")}
                   </Text>
                   <View style={styles.celebrateTrophiesList}>
                     {c.achievementQueue.map((ev, i) => (
@@ -622,7 +713,7 @@ export default function HomeScreen() {
                 }}
               >
                 <Text style={styles.primaryButtonText}>
-                  Kolejny poziom lub kategoria
+                  {t("home.celebrateCtaNextLevel")}
                 </Text>
               </Pressable>
 
@@ -642,7 +733,7 @@ export default function HomeScreen() {
                 }}
               >
                 <Text style={styles.secondaryButtonText}>
-                  Przejdź do powtórek
+                  {t("home.celebrateCtaRevision")}
                 </Text>
               </Pressable>
             </Animated.View>
@@ -663,7 +754,7 @@ export default function HomeScreen() {
         <DailyWordScreenSkeleton />
         {mainPanel.showBridgeHint ? (
           <Text style={styles.trackCelebrationBridgeHint}>
-            Już prawie… aktualizuję postęp toru.
+            {t("home.skeletonBridgeHint")}
           </Text>
         ) : null}
       </>
@@ -677,11 +768,8 @@ export default function HomeScreen() {
           color={StitchColors.onSurfaceVariant}
           style={styles.emptyIcon}
         />
-        <Text style={styles.title}>Brak słowa na dziś</Text>
-        <Text style={styles.subtitle}>
-          Dla obecnego trybu nauki nie ma już słów do losowania albo tor jest
-          pusty. Zmień poziom, kategorię lub języki w ustawieniach.
-        </Text>
+        <Text style={styles.title}>{t("home.noDailyWordTitle")}</Text>
+        <Text style={styles.subtitle}>{t("home.noDailyWordBody")}</Text>
 
         <View style={styles.actions}>
           <Pressable
@@ -692,25 +780,12 @@ export default function HomeScreen() {
             ]}
             onPress={goToLearningModeSettings}
           >
-            <Text style={styles.primaryButtonText}>Otwórz ustawienia</Text>
+            <Text style={styles.primaryButtonText}>
+              {t("home.noDailyWordCta")}
+            </Text>
           </Pressable>
         </View>
       </>
-    );
-  } else if (mainPanel.kind === "transport_retry") {
-    scrollInner = mainPanel.showSkeletonInsteadOfMessage ? (
-      <DailyWordScreenSkeleton />
-    ) : (
-      <TransportRetryMessage
-        variant="embedded"
-        isRetrying={transportFetchBusy}
-        onRetry={() => {
-          logUserAction("button_press", {
-            target: "daily_word_retry_fetch",
-          });
-          void refresh();
-        }}
-      />
     );
   } else if (mainPanel.kind === "fallback_skeleton") {
     scrollInner = <DailyWordScreenSkeleton />;
@@ -719,12 +794,27 @@ export default function HomeScreen() {
     scrollInner = (
       <>
         <View style={card.heroBlock}>
-          <View style={card.heroTitleRow}>
-            <Text style={card.lemma}>{details.lemma}</Text>
-            <View style={card.heroMetaInline}>
+          <View style={card.heroHeaderRow}>
+            <View style={card.heroHeaderMain}>
+              <Text style={card.lemma}>{details.lemma}</Text>
+              <View style={card.heroIpaRow}>
+                {ipa ? <Text style={card.ipa}>/{ipa}/</Text> : null}
+                <View style={card.pillCefrCompact}>
+                  <Text style={card.pillCefrCompactText}>
+                    {details.cefr.code}
+                  </Text>
+                </View>
+                {details.categories.map((cat) => (
+                  <View key={cat.id} style={card.pillCefrCompact}>
+                    <Text style={card.pillCefrCompactText}>{cat.name}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+            <View style={card.heroHeaderActions}>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Pronounce"
+                accessibilityLabel={t("home.a11yPronounce")}
                 android_ripple={ANDROID_RIPPLE_ICON_ROUND}
                 hitSlop={HIT_SLOP_MINI}
                 style={({ pressed }) => [
@@ -747,17 +837,6 @@ export default function HomeScreen() {
                 />
               </Pressable>
             </View>
-          </View>
-          <View style={card.heroIpaRow}>
-            {ipa ? <Text style={card.ipa}>/{ipa}/</Text> : null}
-            <View style={card.pillCefrCompact}>
-              <Text style={card.pillCefrCompactText}>{details.cefr.code}</Text>
-            </View>
-            {details.categories.map((cat) => (
-              <View key={cat.id} style={card.pillCefrCompact}>
-                <Text style={card.pillCefrCompactText}>{cat.name}</Text>
-              </View>
-            ))}
           </View>
         </View>
 
@@ -795,13 +874,20 @@ export default function HomeScreen() {
             })}
           </View>
         ))}
+
+        <WordReportEntry
+          wordId={details.word_id}
+          lemma={details.lemma}
+          variant="inline"
+          logOpenTarget="daily_word_report_open"
+        />
       </>
     );
   }
 
   return (
-    <View style={[styles.screen, screenTopPaddingStyle]}>
-      {header}
+    <View style={styles.screen}>
+      {dailyWordChrome}
       <ScrollView
         style={
           mainScrollCentered ? styles.mainScroll : styles.scrollView
@@ -855,7 +941,7 @@ export default function HomeScreen() {
               busy: hasWordContent ? isSaving : transportFetchBusy,
               disabled: hasWordContent ? !canAct : transportFetchBusy,
             }}
-            accessibilityLabel="I know this word"
+            accessibilityLabel={t("home.footerMarkKnown")}
           >
             <View style={styles.primaryButtonInner}>
               {(hasWordContent && isSaving) ||
@@ -866,19 +952,19 @@ export default function HomeScreen() {
                   accessibilityElementsHidden
                   importantForAccessibility="no-hide-descendants"
                 />
+              ) : hasWordContent && markKnownFailed ? (
+                <Ionicons
+                  name="refresh"
+                  size={22}
+                  color={StitchColors.onPrimary}
+                  accessibilityLabel={t("home.a11yRetryMarkKnown")}
+                />
               ) : null}
-              <Text style={styles.primaryButtonText}>I know this word</Text>
+              <Text style={styles.primaryButtonText}>
+                {t("home.footerMarkKnown")}
+              </Text>
             </View>
           </Pressable>
-          {markKnownInlineError && !isSaving ? (
-            <Text
-              style={styles.markKnownInlineToast}
-              accessibilityRole="alert"
-              accessibilityLiveRegion="polite"
-            >
-              {markKnownInlineError}
-            </Text>
-          ) : null}
         </View>
       ) : null}
       {achievementModal}

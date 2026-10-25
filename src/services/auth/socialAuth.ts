@@ -1,11 +1,10 @@
 import { Platform } from "react-native";
 
-import * as AppleAuthentication from "expo-apple-authentication";
 import { makeRedirectUri } from "expo-auth-session";
-import * as Crypto from "expo-crypto";
 import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
 
+import { i18n } from "@/src/i18n/i18n";
 import { getSupabaseClient, hasSupabaseEnv } from "@/src/lib/supabase/client";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -81,7 +80,19 @@ function extractOAuthCode(url: string): string | null {
 
 let googleNativeConfigured = false;
 
-function ensureGoogleNativeConfigured(): void {
+let googleNativeModulePromise:
+  | Promise<typeof import("@react-native-google-signin/google-signin")>
+  | null = null;
+
+async function getGoogleNativeModule(): Promise<
+  typeof import("@react-native-google-signin/google-signin")
+> {
+  googleNativeModulePromise ??=
+    import("@react-native-google-signin/google-signin");
+  return googleNativeModulePromise;
+}
+
+async function ensureGoogleNativeConfigured(): Promise<void> {
   if (googleNativeConfigured) {
     return;
   }
@@ -89,9 +100,7 @@ function ensureGoogleNativeConfigured(): void {
   if (!webClientId) {
     throw new Error("Brak EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID");
   }
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { GoogleSignin } =
-    require("@react-native-google-signin/google-signin") as typeof import("@react-native-google-signin/google-signin");
+  const { GoogleSignin } = await getGoogleNativeModule();
   GoogleSignin.configure({
     webClientId,
     ...(Platform.OS === "ios" && process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID
@@ -109,7 +118,7 @@ async function signInWithGoogleNative(
   supabase: SupabaseClient,
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   try {
-    ensureGoogleNativeConfigured();
+    await ensureGoogleNativeConfigured();
   } catch (e) {
     return {
       ok: false,
@@ -117,9 +126,7 @@ async function signInWithGoogleNative(
     };
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { GoogleSignin, statusCodes } =
-    require("@react-native-google-signin/google-signin") as typeof import("@react-native-google-signin/google-signin");
+  const { GoogleSignin, statusCodes } = await getGoogleNativeModule();
 
   if (Platform.OS === "android") {
     await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
@@ -198,7 +205,7 @@ async function signInWithGoogleOAuthBrowser(
     return {
       ok: false,
       message:
-        oauthError?.message ?? "Nie udało się rozpocząć logowania Google.",
+        oauthError?.message ?? i18n.t("common.googleSignInStartFailed"),
     };
   }
 
@@ -207,7 +214,7 @@ async function signInWithGoogleOAuthBrowser(
   });
 
   if (result.type !== "success" || !("url" in result) || !result.url) {
-    return { ok: false, message: "Logowanie anulowane." };
+    return { ok: false, message: i18n.t("common.authSignInCancelled") };
   }
 
   try {
@@ -295,91 +302,20 @@ export async function signInWithGoogle(): Promise<
 }
 
 /**
- * Sign in with Apple (iOS): natywny modal + `signInWithIdToken` w Supabase.
- * @platform ios
+ * Sign in with Apple — wyłączone w buildzie (brak `expo-apple-authentication` / capability).
+ * Zostawione API, żeby importy w starszym kodzie nie psuły kompilacji.
  */
 export async function signInWithApple(): Promise<
   { ok: true } | { ok: false; message: string }
 > {
-  if (Platform.OS !== "ios") {
-    return {
-      ok: false,
-      message: "Sign in with Apple jest dostępne tylko na iOS.",
-    };
-  }
-
-  if (!hasSupabaseEnv()) {
-    return {
-      ok: false,
-      message: "Brak konfiguracji Supabase (EXPO_PUBLIC_SUPABASE_*).",
-    };
-  }
-
-  const available = await AppleAuthentication.isAvailableAsync();
-  if (!available) {
-    return {
-      ok: false,
-      message: "Sign in with Apple nie jest dostępne na tym urządzeniu.",
-    };
-  }
-
-  const rawNonce = Crypto.randomUUID();
-  const hashedNonce = await Crypto.digestStringAsync(
-    Crypto.CryptoDigestAlgorithm.SHA256,
-    rawNonce,
-    { encoding: Crypto.CryptoEncoding.BASE64 },
-  );
-
-  try {
-    const credential = await AppleAuthentication.signInAsync({
-      requestedScopes: [
-        AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
-        AppleAuthentication.AppleAuthenticationScope.EMAIL,
-      ],
-      nonce: hashedNonce,
-    });
-
-    const token = credential.identityToken;
-    if (!token) {
-      return { ok: false, message: "Apple nie zwróciło identityToken." };
-    }
-
-    const supabase = getSupabaseClient();
-    const { error } = await supabase.auth.signInWithIdToken({
-      provider: "apple",
-      token,
-      nonce: rawNonce,
-    });
-
-    if (error) {
-      return { ok: false, message: error.message };
-    }
-
-    return { ok: true };
-  } catch (e: unknown) {
-    const code =
-      e && typeof e === "object" && "code" in e
-        ? String((e as { code: string }).code)
-        : "";
-    if (code === "ERR_REQUEST_CANCELED") {
-      return { ok: false, message: "Logowanie anulowane." };
-    }
-    return {
-      ok: false,
-      message: e instanceof Error ? e.message : "Błąd Apple Sign In.",
-    };
-  }
+  return {
+    ok: false,
+    message: "Logowanie Apple nie jest włączone w tej wersji aplikacji.",
+  };
 }
 
 export async function isAppleSignInAvailable(): Promise<boolean> {
-  if (Platform.OS !== "ios") {
-    return false;
-  }
-  try {
-    return await AppleAuthentication.isAvailableAsync();
-  } catch {
-    return false;
-  }
+  return false;
 }
 
 /** Kończy sesję Supabase Auth (Google / Apple / inne). */
@@ -389,9 +325,7 @@ export async function signOutApp(): Promise<void> {
   }
   if (Platform.OS !== "web" && process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID) {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { GoogleSignin } =
-        require("@react-native-google-signin/google-signin") as typeof import("@react-native-google-signin/google-signin");
+      const { GoogleSignin } = await getGoogleNativeModule();
       await GoogleSignin.signOut();
     } catch {
       /* brak natywnego modułu lub już wylogowany */

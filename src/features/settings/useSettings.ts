@@ -4,7 +4,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { LearningOptionsProgress } from "@/src/features/profile/services/learningProgress.service";
 import { getLearningOptionsProgress } from "@/src/features/profile/services/learningProgress.service";
@@ -23,7 +23,9 @@ import type {
     UpsertUserProfileSettingsInput,
     UserProfileSettings,
 } from "@/src/features/profile/types/profile.types";
-import { USER_FACING_SETTINGS_SAVE_FAILED } from "@/src/components/ui/transportRetry.constants";
+import { applyAppLocale } from "@/src/i18n/i18n";
+import { normalizeToAppLocale } from "@/src/i18n/resolveLocale";
+import { setCachedAppLocale } from "@/src/i18n/uiLocaleStorage";
 import { invalidateAfterProfileOrSettingsChange } from "@/src/lib/query/invalidateAfterMutations";
 import { queryKeys } from "@/src/lib/query/queryKeys";
 import { staleTimes } from "@/src/lib/query/staleTimes";
@@ -54,6 +56,9 @@ const defaultFormState: SettingsFormState = {
 export function useSettings() {
   const queryClient = useQueryClient();
   const [form, setForm] = useState<SettingsFormState>(defaultFormState);
+  /** Snapshot przed `save` — przy błędzie sieci przywracamy lokalny wybór (bez skoku poziomu z serwera). */
+  const preSaveFormSnapshotRef = useRef<SettingsFormState | null>(null);
+  const skipSettingsFormSyncOnceRef = useRef(false);
 
   const optionsQuery = useQuery({
     queryKey: queryKeys.onboarding.options,
@@ -75,11 +80,7 @@ export function useSettings() {
     staleTime: staleTimes.learningOptionsProgress,
   });
 
-  /** Blokuj UI tylko na onboarding + settings; postęp opcji może dograć się w tle (bez migania). */
-  const isLoading =
-    !optionsQuery.isFetched || !settingsQuery.isFetched;
-
-  /** Brak cache + błąd — nie da się zbudować formularza; nie mylić z „brak profilu” po sukcesie RPC. */
+  /** Brak cache + błąd — traktuj jak nierozstrzygnięte ładowanie (szkielet do reconnect). */
   const blockingLoadError =
     (optionsQuery.isFetched &&
       optionsQuery.isError &&
@@ -88,21 +89,21 @@ export function useSettings() {
       settingsQuery.isError &&
       settingsQuery.data === undefined);
 
+  /** Blokuj UI na onboarding + settings; błąd bez cache = dalej „ładowanie”. */
+  const isLoading =
+    !optionsQuery.isFetched ||
+    !settingsQuery.isFetched ||
+    blockingLoadError;
+
   /** Wyłącznie po udanym `get_user_profile_settings` zwracającym `null`. */
   const onboardingRequiredConfirmed =
     settingsQuery.isSuccess && settingsQuery.data === null;
 
-  const blockingRetryBusy =
-    blockingLoadError &&
-    (optionsQuery.isFetching || settingsQuery.isFetching);
-
-  /** Spinner na „Spróbuj ponownie” przy pierwszym ładowaniu / po „stuck” timeout. */
-  const settingsInitialFetchBusy =
-    !blockingLoadError &&
-    isLoading &&
-    (optionsQuery.isFetching || settingsQuery.isFetching);
-
   useEffect(() => {
+    if (skipSettingsFormSyncOnceRef.current) {
+      skipSettingsFormSyncOnceRef.current = false;
+      return;
+    }
     const options = optionsQuery.data;
     const optionsProgress = optionsProgressQuery.data ?? null;
     if (!options) {
@@ -150,11 +151,15 @@ export function useSettings() {
       await invalidateTodayDailyWord();
       return saved;
     },
-    onSuccess: (saved) => {
+    onSuccess: async (saved) => {
+      preSaveFormSnapshotRef.current = null;
       queryClient.setQueryData(queryKeys.profile.settings, saved);
       invalidateAfterProfileOrSettingsChange(queryClient, {
         skipSettingsQuery: true,
       });
+      const locale = normalizeToAppLocale(saved.native_language.code);
+      await applyAppLocale(locale);
+      await setCachedAppLocale(locale);
       setForm((prev) => ({
         ...prev,
         settings: saved,
@@ -169,10 +174,12 @@ export function useSettings() {
       if (__DEV__) {
         console.warn("[wordly] useSettings save failed", e);
       }
-      setForm((prev) => ({
-        ...prev,
-        error: USER_FACING_SETTINGS_SAVE_FAILED,
-      }));
+      const snap = preSaveFormSnapshotRef.current;
+      preSaveFormSnapshotRef.current = null;
+      if (snap) {
+        skipSettingsFormSyncOnceRef.current = true;
+        setForm({ ...snap, error: undefined });
+      }
     },
   });
 
@@ -204,6 +211,7 @@ export function useSettings() {
     }
 
     setForm((prev) => ({ ...prev, error: undefined }));
+    preSaveFormSnapshotRef.current = { ...form, error: undefined };
     saveMutation.mutate({
       p_native_language_id: form.nativeLanguageId,
       p_learning_language_id: form.learningLanguageId,
@@ -288,27 +296,19 @@ export function useSettings() {
   }, [form.options, form.selectedCategoryId]);
 
   /** Top-level gates only; inner `isLoading` skeleton stays in the screen. */
-  const viewKind = useMemo(():
-    | "blocking_load_error"
-    | "onboarding_required"
-    | "main" => {
-    if (blockingLoadError) {
-      return "blocking_load_error";
-    }
+  const viewKind = useMemo((): "onboarding_required" | "main" => {
     if (!isLoading && onboardingRequiredConfirmed) {
       return "onboarding_required";
     }
     return "main";
-  }, [blockingLoadError, isLoading, onboardingRequiredConfirmed]);
+  }, [isLoading, onboardingRequiredConfirmed]);
 
   return {
     viewKind,
     isLoading,
-    blockingLoadError,
-    blockingRetryBusy,
-    settingsInitialFetchBusy,
     onboardingRequiredConfirmed,
     isSaving: saveMutation.isPending,
+    saveFailed: saveMutation.isError,
     options: form.options,
     optionsProgress: form.optionsProgress,
     settings: form.settings,

@@ -6,6 +6,10 @@ import type {
   UpsertUserProfileSettingsInput,
 } from '../types/profile.types'
 
+function coerceUserProfileSettings(data: unknown): UserProfileSettings {
+  return data as UserProfileSettings;
+}
+
 export async function getOnboardingOptions(): Promise<OnboardingOptions> {
   const { data, error } = await rpc('get_onboarding_options')
 
@@ -31,7 +35,7 @@ export async function getUserProfileSettings(): Promise<UserProfileSettings | nu
     return null
   }
 
-  return data as UserProfileSettings
+  return coerceUserProfileSettings(data)
 }
 
 export async function upsertUserProfileSettings(
@@ -47,7 +51,7 @@ export async function upsertUserProfileSettings(
     throw new Error('Profile settings were not returned')
   }
 
-  return data as UserProfileSettings
+  return coerceUserProfileSettings(data)
 }
 
 /** Usuwa dzisiejszą pozycję w user_daily_word, po zmianie trybu nauki kolejne get_or_create_daily_word wylosuje nowe słowo. */

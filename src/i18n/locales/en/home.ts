@@ -1,0 +1,38 @@
+export default {
+  home: {
+    screenTitle: "Daily word",
+    trackModeLine: "Mode · {{label}}",
+    trackFallbackDifficulty: "Difficulty",
+    trackFallbackCategory: "Category",
+    a11yTrackLoading: "Track progress, loading",
+    a11yTrackPending: "{{line}}, loading progress",
+    a11yTrackSummary: "{{line}}, {{pct}}",
+    achievementGoToTrophies: "Go to trophies",
+    achievementClose: "Close",
+    /** TrackProgressPill accessibility */
+    a11yPillLoading: "Track progress, loading",
+    a11yPillPending: "{{trackName}}, loading progress",
+    a11yPillNoPercent: "{{trackName}}, no percentage value",
+    a11yPillPercent: "{{trackName}}, {{pct}} percent",
+    celebrateTitle: "Great work!",
+    celebrateTrackDonePrefix: "Track ",
+    celebrateTrackDoneSuffix: " completed.",
+    celebrateWordsLearned_one: "You've learned {{count}} word!",
+    celebrateWordsLearned_other: "You've learned {{count}} words!",
+    celebrateKeepGoing: "Keep it up.",
+    celebrateNextSteps:
+      "Go to settings and choose the next level or category.",
+    celebrateTrophiesHeading: "New trophies",
+    celebrateTrophiesSub: "Earned when you finished this track",
+    celebrateCtaNextLevel: "Next level or category",
+    celebrateCtaRevision: "Go to revision",
+    noDailyWordTitle: "No word for today",
+    noDailyWordBody:
+      "There are no more words to draw for your current learning mode, or the track is empty. Change level, category, or languages in settings.",
+    noDailyWordCta: "Open settings",
+    skeletonBridgeHint: "Almost there… updating track progress.",
+    footerMarkKnown: "I know this word",
+    a11yPronounce: "Pronounce",
+    a11yRetryMarkKnown: "Try again",
+  },
+} as const;

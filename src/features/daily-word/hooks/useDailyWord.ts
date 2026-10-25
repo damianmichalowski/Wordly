@@ -13,12 +13,16 @@ import {
     getLearningOptionsProgress,
     getLearningTrackProgress,
 } from "@/src/features/profile/services/learningProgress.service";
+import { patchLibraryCacheAfterMarkKnown } from "@/src/features/library/utils/patchLibraryCacheAfterMarkKnown";
 import { createDailyWordCurrentQueryFn } from "@/src/lib/query/dailyWordCurrentQuery";
 import { invalidateAfterDailyWordMarkedKnown } from "@/src/lib/query/invalidateAfterMutations";
 import { queryKeys } from "@/src/lib/query/queryKeys";
+import { computeLikelyOnline } from "@/src/network/netInfoPolicy";
+import { warmCachesAfterDailyWordMarkedKnown } from "@/src/lib/query/warmCachesAfterMutations";
 import { staleTimes } from "@/src/lib/query/staleTimes";
-import { syncWidgetSnapshotFromApp } from "@/src/services/widgets/syncWidgetSnapshot";
+import type { WordDetails } from "@/src/features/word-details/types/wordDetails.types";
 import { getWordDetails } from "@/src/features/word-details/services/wordDetails.service";
+import { syncWidgetSnapshotFromApp } from "@/src/services/widgets/syncWidgetSnapshot";
 
 import { markDailyWordAsKnown } from "../services/dailyWord.service";
 import type { DailyWordResult } from "../types/dailyWord.types";
@@ -27,15 +31,36 @@ type DailyWordHookState = {
   /** Ostatnie zdarzenia trofeów z `mark_word_known_and_advance_daily_word`. */
   lastAchievementEvents: AchievementEventPayload[];
   exhaustedAwaitingTrackCelebration: boolean;
-  /** Błąd zapisu „Known” — ten sam wyświetlany słowo, bez zmiany cache. */
-  markKnownInlineError: string | null;
 };
 
 const initialHookState: DailyWordHookState = {
   lastAchievementEvents: [],
   exhaustedAwaitingTrackCelebration: false,
-  markKnownInlineError: null,
 };
+
+const GET_WORD_DETAILS_AFTER_MARK_MS = 25_000;
+/** Bez limitu `mutateAsync` potrafi wisieć po flaky reconnect — wtedy `finally` nigdy nie zdejmuje pending. */
+const MARK_KNOWN_RPC_TIMEOUT_MS = 45_000;
+/** `fetchQuery` odzyskania `dailyWord.current` po błędzie `getWordDetails` — musi mieć górny limit. */
+const FETCH_CURRENT_AFTER_MARK_FAILED_TIMEOUT_MS = 25_000;
+/** Ciepłenie cache po sukcesie — best-effort; nie może blokować CTA w nieskończoność. */
+const MARK_KNOWN_CACHE_WARM_TIMEOUT_MS = 40_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error("withTimeout")), ms);
+    promise.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      },
+    );
+  });
+}
 
 /** Home: `trackProgress`; Ustawienia (paski): `optionsProgress` — osobne RPC; zsynchronizuj oba. */
 async function refreshLearningCachesAfterMarkKnown(qc: QueryClient) {
@@ -63,6 +88,8 @@ export function useDailyWord(options?: UseDailyWordOptions) {
     useState<DailyWordHookState>(initialHookState);
   /** Cały przebieg „Known” (RPC + dogranie następnego słowa) — nie tylko `mutation.isPending`. */
   const [markKnownFlowPending, setMarkKnownFlowPending] = useState(false);
+  /** Ostatnia próba zakończona błędem — CTA pokazuje retry zamiast samego spinnera. */
+  const [markKnownFailed, setMarkKnownFailed] = useState(false);
 
   const query = useQuery({
     queryKey: queryKeys.dailyWord.current,
@@ -113,7 +140,7 @@ export function useDailyWord(options?: UseDailyWordOptions) {
    */
   useEffect(() => {
     const unsub = NetInfo.addEventListener((state) => {
-      const online = state.isConnected !== false;
+      const online = computeLikelyOnline(state);
       if (!online) {
         if (markKnownFlowPendingRef.current) {
           markKnownReconnectRecoveryEligibleRef.current = true;
@@ -138,12 +165,6 @@ export function useDailyWord(options?: UseDailyWordOptions) {
       markKnownMutation.reset();
       markKnownFlowPendingRef.current = false;
       setMarkKnownFlowPending(false);
-      setHookState((prev) => ({
-        ...prev,
-        markKnownInlineError:
-          prev.markKnownInlineError ??
-          "Połączeniu przywrócono. Spróbuj ponownie.",
-      }));
     });
     return () => unsub();
   }, [markKnownMutation]);
@@ -161,17 +182,28 @@ export function useDailyWord(options?: UseDailyWordOptions) {
     if (!wordId) {
       return "skipped";
     }
+    setMarkKnownFailed(false);
     markKnownReconnectRecoveryEligibleRef.current = false;
     markKnownFlowPendingRef.current = true;
     setMarkKnownFlowPending(true);
-    setHookState((prev) => ({ ...prev, markKnownInlineError: null }));
     if (__DEV__) {
       console.log("[wordly] daily_word_mark_known flow started", { wordId });
     }
     try {
       const { assignment: nextAssignment, achievementEvents } =
-        await markKnownMutation.mutateAsync(wordId);
+        await withTimeout(
+          markKnownMutation.mutateAsync(wordId),
+          MARK_KNOWN_RPC_TIMEOUT_MS,
+        );
       markKnownReconnectRecoveryEligibleRef.current = false;
+
+      const prevDaily = queryClient.getQueryData<DailyWordResult | null>(
+        queryKeys.dailyWord.current,
+      );
+      patchLibraryCacheAfterMarkKnown(queryClient, {
+        markedWordId: wordId,
+        details: prevDaily?.details,
+      });
 
       if (!nextAssignment) {
         queryClient.setQueryData(queryKeys.dailyWord.current, null);
@@ -179,10 +211,19 @@ export function useDailyWord(options?: UseDailyWordOptions) {
           ...prev,
           lastAchievementEvents: achievementEvents,
           exhaustedAwaitingTrackCelebration: true,
-          markKnownInlineError: null,
         }));
         invalidateAfterDailyWordMarkedKnown(queryClient);
-        await refreshLearningCachesAfterMarkKnown(queryClient);
+        await withTimeout(
+          Promise.all([
+            refreshLearningCachesAfterMarkKnown(queryClient),
+            warmCachesAfterDailyWordMarkedKnown(queryClient, {
+              prefetchAchievements: achievementEvents.length > 0,
+            }),
+          ]),
+          MARK_KNOWN_CACHE_WARM_TIMEOUT_MS,
+        ).catch(() => {
+          // Best-effort po wyczerpaniu toru.
+        });
         try {
           await options?.onTrackExhausted?.();
         } catch {
@@ -192,32 +233,68 @@ export function useDailyWord(options?: UseDailyWordOptions) {
         return "exhausted";
       }
 
-      const details = await getWordDetails(nextAssignment.word_id);
-      queryClient.setQueryData(
-        queryKeys.words.detail(nextAssignment.word_id),
-        details,
-      );
+      const nextWordId = nextAssignment.word_id;
+      let details =
+        queryClient.getQueryData<WordDetails>(queryKeys.words.detail(nextWordId)) ??
+        null;
+      if (!details) {
+        try {
+          details = await withTimeout(
+            getWordDetails(nextWordId),
+            GET_WORD_DETAILS_AFTER_MARK_MS,
+          );
+        } catch (e) {
+          if (__DEV__) {
+            console.warn(
+              "[wordly] getWordDetails after mark known failed; refetching current daily word",
+              e,
+            );
+          }
+          await queryClient.invalidateQueries({ queryKey: queryKeys.dailyWord.all });
+          const recovered = await withTimeout(
+            queryClient.fetchQuery({
+              queryKey: queryKeys.dailyWord.current,
+              queryFn: createDailyWordCurrentQueryFn(queryClient),
+            }),
+            FETCH_CURRENT_AFTER_MARK_FAILED_TIMEOUT_MS,
+          );
+          if (
+            recovered?.details &&
+            recovered.assignment?.word_id === nextWordId
+          ) {
+            details = recovered.details;
+          } else {
+            throw e instanceof Error ? e : new Error("recover_next_word_failed");
+          }
+        }
+      }
+      queryClient.setQueryData(queryKeys.words.detail(nextWordId), details);
       const data: DailyWordResult = { assignment: nextAssignment, details };
       queryClient.setQueryData(queryKeys.dailyWord.current, data);
       setHookState((prev) => ({
         ...prev,
         lastAchievementEvents: achievementEvents,
         exhaustedAwaitingTrackCelebration: false,
-        markKnownInlineError: null,
       }));
       invalidateAfterDailyWordMarkedKnown(queryClient);
-      await refreshLearningCachesAfterMarkKnown(queryClient);
+      await withTimeout(
+        Promise.all([
+          refreshLearningCachesAfterMarkKnown(queryClient),
+          warmCachesAfterDailyWordMarkedKnown(queryClient, {
+            prefetchAchievements: achievementEvents.length > 0,
+          }),
+        ]),
+        MARK_KNOWN_CACHE_WARM_TIMEOUT_MS,
+      ).catch(() => {
+        // Best-effort; focus / retry odświeży.
+      });
       void syncWidgetSnapshotFromApp();
       return "next";
     } catch (e) {
       if (__DEV__) {
         console.warn("[wordly] daily_word_mark_known flow failed (network or RPC)", e);
       }
-      setHookState((prev) => ({
-        ...prev,
-        markKnownInlineError:
-          "Nie udało się zapisać. Spróbuj ponownie.",
-      }));
+      setMarkKnownFailed(true);
       return "skipped";
     } finally {
       if (__DEV__) {
@@ -296,7 +373,6 @@ export function useDailyWord(options?: UseDailyWordOptions) {
     lastAchievementEvents: hookState.lastAchievementEvents,
     exhaustedAwaitingTrackCelebration:
       hookState.exhaustedAwaitingTrackCelebration,
-    markKnownInlineError: hookState.markKnownInlineError,
     clearLastAchievementEvents,
     dismissLastAchievementEvent,
     clearExhaustedAwaitingTrackCelebration,
@@ -304,5 +380,6 @@ export function useDailyWord(options?: UseDailyWordOptions) {
     refresh,
     refreshIfStale,
     markKnown,
+    markKnownFailed,
   };
 }

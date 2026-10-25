@@ -1,3 +1,5 @@
+import { normalizeToAppLocale } from '@/src/i18n/resolveLocale'
+
 export type OnboardingLanguage = {
   id: string
   code: string
@@ -13,6 +15,15 @@ export type OnboardingCategory = {
 
 export type LearningModeType = 'difficulty' | 'category'
 export type LearningLevel = 'beginner' | 'intermediate' | 'advanced'
+
+/** App UI + translation locale (en | pl), derived from `native_language.code`. */
+export type AppUiLocale = 'en' | 'pl'
+
+export function appUiLocaleFromNativeLanguage(
+  native: Pick<OnboardingLanguage, 'code'>,
+): AppUiLocale {
+  return normalizeToAppLocale(native.code)
+}
 
 export type OnboardingOptionItem = {
   value: string

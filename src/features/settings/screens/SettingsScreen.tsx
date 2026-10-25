@@ -9,6 +9,7 @@ import {
   useState,
   type ElementRef,
 } from "react";
+import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
   Alert,
@@ -25,6 +26,7 @@ import {
   type LayoutChangeEvent,
 } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
+import { LinearGradient } from "expo-linear-gradient";
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -32,20 +34,16 @@ import {
 
 import { ScreenHeader } from "@/src/components/layout/ScreenHeader";
 import { CenteredMessageCta } from "@/src/components/ui/CenteredMessageCta";
-import { TransportRetryMessage } from "@/src/components/ui/TransportRetryMessage";
-import { SettingsScreenSkeleton } from "@/src/features/settings/components/SettingsScreenSkeleton";
 import {
   ANDROID_RIPPLE_PRIMARY,
   ANDROID_RIPPLE_SURFACE,
   linkPressStyle,
   primarySolidPressStyle,
 } from "@/src/components/ui/interaction";
-import { LearnTrackModeSegment } from "@/src/components/ui/LearnTrackModeSegment";
 import { progressBarFillPercent } from "@/src/components/ui/LearningTrackOptionRow";
+import { LearnTrackModeSegment } from "@/src/components/ui/LearnTrackModeSegment";
 import { TrackModeTile } from "@/src/components/ui/TrackModeTile";
 import { WidgetHomePreviewCard } from "@/src/components/ui/WidgetHomePreviewCard";
-import { translationLinesForWidget } from "@/src/services/widgets/widgetSurfaceService";
-import type { LearningModeType } from "@/src/features/profile/types/profile.types";
 import {
   AchievementDetailModal,
   AllTrophiesSheet,
@@ -56,28 +54,46 @@ import {
 import { useDailyWordReadOnlyPreview } from "@/src/features/daily-word/hooks/useDailyWordReadOnlyPreview";
 import { useUserProfileSummaryQuery } from "@/src/features/profile/hooks/useUserProfileSummaryQuery";
 import { getAccountEmailOrName } from "@/src/features/profile/services/profileAccount.service";
+import type { LearningModeType } from "@/src/features/profile/types/profile.types";
 import { LanguageFlagBadge } from "@/src/features/settings/components/LanguageFlagBadge";
-import { getLearningLevelShortDescription } from "@/src/features/settings/learningLevelCopy";
+import { SettingsScreenSkeleton } from "@/src/features/settings/components/SettingsScreenSkeleton";
 import { useSettingsScreenData } from "@/src/features/settings/hooks/useSettingsScreenData";
+import { getLearningLevelShortDescription } from "@/src/features/settings/learningLevelCopy";
 import { useAppBootstrap } from "@/src/hooks/useAppBootstrap";
-import {
-  SESSION_FLASHCARD_STUCK_MS,
-  useStuckLoading,
-} from "@/src/hooks/useStuckLoading";
 import { hasSupabaseEnv } from "@/src/lib/supabase/client";
 import { signOutApp } from "@/src/services/auth/socialAuth";
-import { logUserAction } from "@/src/utils/userActionLog";
 import { clearOnboardingCompletionFlag } from "@/src/services/storage/onboardingStorage";
+import { translationLinesForWidget } from "@/src/services/widgets/widgetSurfaceService";
 import {
   StitchColors,
   StitchFonts,
   StitchRadius,
 } from "@/src/theme/wordlyStitchTheme";
+import { logUserAction } from "@/src/utils/userActionLog";
 
 /** Tolerancja na zaokrąglenia layoutu, poniżej uznajemy, że treść „mieści się”. */
 const SCROLL_OVERFLOW_EPS_PX = 2;
+/** Odstęp między przyciskiem a dolnymi tabami. */
+const SAVE_FOOTER_GAP_PX = 6;
+/** Zapewnia miejsce pod sticky footerem (paddingTop + przycisk). */
+const SAVE_FOOTER_SPACER_PX = 68;
+/** Fade pod przyciskiem (nad tab barem). */
+const BOTTOM_TABS_FADE_HEIGHT_PX = 56;
 
 type PickerKey = "nativeLanguage" | "learningLanguage" | null;
+
+function rgbaFromHex(hex: string, alpha: number): string {
+  const raw = hex.trim().replace("#", "");
+  const full =
+    raw.length === 3 ? raw.split("").map((c) => c + c).join("") : raw;
+  if (full.length !== 6) {
+    return `rgba(0,0,0,${alpha})`;
+  }
+  const r = Number.parseInt(full.slice(0, 2), 16);
+  const g = Number.parseInt(full.slice(2, 4), 16);
+  const b = Number.parseInt(full.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
 
 function formatSince(iso: string): string {
   try {
@@ -168,6 +184,7 @@ function StitchSettingsRow({
 }
 
 export default function SettingsScreen() {
+  const { t } = useTranslation();
   const isFocused = useIsFocused();
   const router = useRouter();
   const { focus: focusParam } = useLocalSearchParams<{
@@ -204,9 +221,8 @@ export default function SettingsScreen() {
   const {
     viewKind,
     isLoading,
-    blockingLoadError,
-    blockingRetryBusy,
     isSaving,
+    saveFailed,
     options,
     optionsProgress,
     settings,
@@ -225,23 +241,7 @@ export default function SettingsScreen() {
     setLearningLevel,
     setSelectedCategoryId,
     save,
-    refresh,
   } = useSettingsScreenData();
-
-  /** Kolejna próba „Spróbuj ponownie” — resetuje timer „stuck” i wraca do skeletonu. */
-  const [settingsLoadAttempt, setSettingsLoadAttempt] = useState(0);
-  const settingsLoadActive = isLoading && !blockingLoadError;
-  const stuckSettingsLoad = useStuckLoading(
-    settingsLoadActive,
-    SESSION_FLASHCARD_STUCK_MS,
-    settingsLoadAttempt,
-  );
-
-  useEffect(() => {
-    if (!settingsLoadActive) {
-      setSettingsLoadAttempt(0);
-    }
-  }, [settingsLoadActive]);
 
   /**
    * Profil / trofea / podgląd słowa dnia: `useUserProfileSummaryQuery`,
@@ -257,8 +257,6 @@ export default function SettingsScreen() {
     rows: achievementRows,
     hasLoadError: achievementsHasLoadError,
     isInitialLoading: achievementsInitialLoading,
-    retryBusy: achievementsRetryBusy,
-    reload: reloadAchievements,
   } = useUserAchievementsList(settingsDataActive);
   const [achievementDetailRow, setAchievementDetailRow] =
     useState<UserAchievementRow | null>(null);
@@ -406,9 +404,7 @@ export default function SettingsScreen() {
       (optionsProgress?.categories ?? []).map((c) => [c.id, c]),
     );
     const getPct = (knownCount: number, availableCount: number) =>
-      availableCount > 0
-        ? Math.round((knownCount / availableCount) * 100)
-        : 0;
+      availableCount > 0 ? Math.round((knownCount / availableCount) * 100) : 0;
     return { difficulty, categories, getPct };
   }, [optionsProgress]);
 
@@ -491,7 +487,9 @@ export default function SettingsScreen() {
                     style={({ pressed }) => [
                       styles.modalLanguageRow,
                       selected && styles.modalLanguageRowSelected,
-                      pressed && !chipDisabled && styles.modalLanguageRowPressed,
+                      pressed &&
+                        !chipDisabled &&
+                        styles.modalLanguageRowPressed,
                       chipDisabled && styles.prefRowDisabled,
                     ]}
                     onPress={() => {
@@ -566,28 +564,11 @@ export default function SettingsScreen() {
     const translations = translationLinesForWidget(previewDetails?.senses);
     return {
       word,
-      translations:
-        translations.length > 0 ? translations : ["cześć"],
+      translations: translations.length > 0 ? translations : ["cześć"],
     };
   }, [previewDetails?.lemma, previewDetails?.senses]);
 
   switch (viewKind) {
-    case "blocking_load_error":
-      return (
-        <View style={styles.screen}>
-          <ScreenHeader title="Ustawienia" />
-          <TransportRetryMessage
-            variant="screen"
-            isRetrying={blockingRetryBusy}
-            onRetry={() => {
-              logUserAction("button_press", {
-                target: "settings_blocking_load_retry",
-              });
-              void refresh();
-            }}
-          />
-        </View>
-      );
     case "onboarding_required":
       return (
         <SafeAreaView
@@ -616,11 +597,12 @@ export default function SettingsScreen() {
       : since;
   const profileSinceLine =
     sinceForLine.length > 0 ? `W aplikacji od ${sinceForLine}` : "";
+  const bottomTabsFadeHeight = Math.max(1, SAVE_FOOTER_GAP_PX + BOTTOM_TABS_FADE_HEIGHT_PX);
 
   return (
     <View style={styles.screen}>
       {pickerModal}
-      <ScreenHeader title="Ustawienia" />
+      <ScreenHeader title={t("settings.screenTitle")} />
       <ScrollView
         ref={settingsMainScrollRef}
         style={styles.scrollView}
@@ -628,459 +610,486 @@ export default function SettingsScreen() {
         onLayout={onSettingsScrollLayout}
         onContentSizeChange={onSettingsContentSizeChange}
         showsVerticalScrollIndicator={settingsNeedsScroll}
-        persistentScrollbar={
-          settingsNeedsScroll && Platform.OS === "android"
-        }
+        persistentScrollbar={settingsNeedsScroll && Platform.OS === "android"}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingBottom: 28 + insets.bottom },
+          {
+            paddingBottom: SAVE_FOOTER_GAP_PX + SAVE_FOOTER_SPACER_PX,
+          },
         ]}
       >
         {isLoading ? (
-          stuckSettingsLoad ? (
-            <TransportRetryMessage
-              variant="embedded"
-              isRetrying={false}
-              onRetry={() => {
-                logUserAction("button_press", {
-                  target: "settings_stuck_initial_load_retry",
-                });
-                setSettingsLoadAttempt((n) => n + 1);
-                void refresh();
-              }}
-            />
-          ) : (
-            <SettingsScreenSkeleton />
-          )
+          <SettingsScreenSkeleton />
         ) : (
           <>
-        <View style={styles.profileCard}>
-          <View style={styles.avatarWrap}>
-            <View style={styles.avatarCircle}>
-              <Text
-                style={styles.avatarInitials}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-              >
-                {getProfileInitials(displayName)}
-              </Text>
-            </View>
-          </View>
-          <View style={styles.profileBody}>
-            <Text style={styles.profileName}>{displayName}</Text>
-            {profileSinceLine ? (
-              <Text style={styles.profileSubtitle}>{profileSinceLine}</Text>
-            ) : null}
-            {profileSummary != null && hasSupabaseEnv() ? (
-              <View
-                style={styles.profileStatChips}
-                accessibilityLabel={`Seria Daily Review ${profileSummary.currentDailyReviewStreak} dni, rekord ${profileSummary.longestDailyReviewStreak}, ${profileSummary.knownWordsCount} znanych słów`}
-              >
-                <View style={styles.profileChipStreak}>
-                  <View style={styles.profileChipStreakMain}>
-                    <Ionicons
-                      name="flame"
-                      size={18}
-                      color="#D32F2F"
-                      accessibilityElementsHidden
-                    />
-                    <Text style={styles.profileChipStreakValue}>
-                      {profileSummary.currentDailyReviewStreak}
-                    </Text>
-                    <Text style={styles.profileChipStreakDni}>dni</Text>
-                  </View>
-                  <Text style={styles.profileChipStreakRekord}>
-                    Rekord{" "}
-                    {profileSummary.longestDailyReviewStreak}{" "}
-                    {profileSummary.longestDailyReviewStreak === 1
-                      ? "dzień"
-                      : "dni"}
-                  </Text>
-                </View>
-                <View style={styles.profileChipWords}>
-                  <View style={styles.profileChipWordsMain}>
-                    <Ionicons
-                      name="library-outline"
-                      size={18}
-                      color={StitchColors.primary}
-                    />
-                    <Text style={styles.profileChipWordsValue}>
-                      {profileSummary.knownWordsCount}
-                    </Text>
-                  </View>
-                  <Text style={styles.profileChipWordsLabel}>
-                    {profileSummary.knownWordsCount === 1
-                      ? "znane słowo"
-                      : profileSummary.knownWordsCount >= 2 &&
-                          profileSummary.knownWordsCount <= 4
-                        ? "znane słowa"
-                        : "znanych słów"}
+            <View style={styles.profileCard}>
+              <View style={styles.avatarWrap}>
+                <View style={styles.avatarCircle}>
+                  <Text
+                    style={styles.avatarInitials}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                  >
+                    {getProfileInitials(displayName)}
                   </Text>
                 </View>
               </View>
-            ) : null}
-            {profileSummary?.email &&
-            profileSummary.email.trim() !== displayName.trim() ? (
-              <Text style={styles.profileEmailLine} numberOfLines={2}>
-                {profileSummary.email}
-              </Text>
-            ) : null}
-          </View>
-        </View>
-
-        {supabaseConfigured ? (
-          <View
-            collapsable={false}
-            onLayout={onAchievementsSectionLayout}
-          >
-            <SettingsAchievementsSection
-              rows={achievementRows}
-              hasLoadError={achievementsHasLoadError}
-              isInitialLoading={achievementsInitialLoading}
-              retryBusy={achievementsRetryBusy}
-              onRetryLoad={
-                achievementsHasLoadError
-                  ? () => {
-                      void reloadAchievements();
-                    }
-                  : undefined
-              }
-              onTrophyPress={setAchievementDetailRow}
-              onSeeAll={() => setAllTrophiesOpen(true)}
-            />
-          </View>
-        ) : null}
-
-        <Text style={styles.sectionHeading}>Preferencje nauki</Text>
-        <View style={styles.listGroupOuter}>
-          <View style={styles.listGroupInner}>
-            <StitchSettingsRow
-              icon="language-outline"
-              title="Język ojczysty"
-              subtitle="Tłumaczenia i interfejs"
-              value={nativeName}
-              disabled={chipDisabled}
-              onPress={() => {
-                logUserAction("button_press", {
-                  target: "settings_open_language_picker",
-                  which: "native",
-                });
-                setPicker("nativeLanguage");
-              }}
-            />
-            <StitchSettingsRow
-              icon="book-outline"
-              title="Język nauki"
-              subtitle="Język, którego się uczysz"
-              value={learningName}
-              disabled={chipDisabled}
-              onPress={() => {
-                logUserAction("button_press", {
-                  target: "settings_open_language_picker",
-                  which: "learning",
-                });
-                setPicker("learningLanguage");
-              }}
-            />
-          </View>
-        </View>
-
-        <View
-          collapsable={false}
-          style={styles.learningModeSection}
-          onLayout={onLearningModeSectionLayout}
-        >
-          <Text
-            style={[styles.sectionHeading, styles.sectionHeadingLearningMode]}
-          >
-            Tryb nauki
-          </Text>
-          <View style={styles.trackPanelOuter}>
-            <LearnTrackModeSegment
-              value={learningModeType}
-              disabled={chipDisabled}
-              onChange={handleTrackModeChange}
-            />
-            <Animated.View
-              key={learningModeType}
-              entering={FadeIn.duration(260)}
-              style={styles.modeGridWrap}
-            >
-              <View
-                style={styles.modeGrid}
-                onLayout={onModeGridLayout}
-              >
-                {options && learningModeType === "difficulty"
-                  ? options.learningLevels.map((lvl) => {
-                      const p = trackProgressMaps.difficulty.get(
-                        lvl.value as any,
-                      );
-                      const availableCount = p?.availableCount ?? 0;
-                      const knownCount = p?.knownCount ?? 0;
-                      const pct = trackProgressMaps.getPct(
-                        knownCount,
-                        availableCount,
-                      );
-                      const barFill = progressBarFillPercent(
-                        pct,
-                        availableCount,
-                      );
-                      const selected =
-                        learningModeType === "difficulty" &&
-                        learningLevel === (lvl.value as any);
-                      return (
-                        <TrackModeTile
-                          key={lvl.value}
-                          title={lvl.label}
-                          description={getLearningLevelShortDescription(
-                            lvl.value,
-                          )}
-                          selected={selected}
-                          disabled={chipDisabled}
-                          availableCount={availableCount}
-                          pct={pct}
-                          barFill={barFill}
-                          width={modeTileWidth}
-                          onPress={() => {
-                            logUserAction("tile_press", {
-                              target: "settings_learning_level",
-                              level: String(lvl.value),
-                            });
-                            setLearningLevel(lvl.value as any);
-                          }}
+              <View style={styles.profileBody}>
+                <Text style={styles.profileName}>{displayName}</Text>
+                {profileSinceLine ? (
+                  <Text style={styles.profileSubtitle}>{profileSinceLine}</Text>
+                ) : null}
+                {profileSummary != null && hasSupabaseEnv() ? (
+                  <View
+                    style={styles.profileStatChips}
+                    accessibilityLabel={`Seria Daily Review ${profileSummary.currentDailyReviewStreak} dni, rekord ${profileSummary.longestDailyReviewStreak}, ${profileSummary.knownWordsCount} znanych słów`}
+                  >
+                    <View style={styles.profileChipStreak}>
+                      <View style={styles.profileChipStreakMain}>
+                        <Ionicons
+                          name="flame"
+                          size={18}
+                          color="#D32F2F"
+                          accessibilityElementsHidden
                         />
-                      );
-                    })
-                  : options?.categories.map((cat) => {
-                      const p = trackProgressMaps.categories.get(cat.id);
-                      const availableCount = p?.availableCount ?? 0;
-                      const knownCount = p?.knownCount ?? 0;
-                      const pct = trackProgressMaps.getPct(
-                        knownCount,
-                        availableCount,
-                      );
-                      const barFill = progressBarFillPercent(
-                        pct,
-                        availableCount,
-                      );
-                      const selected =
-                        learningModeType === "category" &&
-                        selectedCategoryId === cat.id;
-                      return (
-                        <TrackModeTile
-                          key={cat.id}
-                          title={cat.name}
-                          description={cat.description}
-                          selected={selected}
-                          disabled={chipDisabled}
-                          availableCount={availableCount}
-                          pct={pct}
-                          barFill={barFill}
-                          width={modeTileWidth}
-                          onPress={() => {
-                            logUserAction("tile_press", {
-                              target: "settings_learning_category",
-                              categoryId: cat.id,
-                            });
-                            setSelectedCategoryId(cat.id);
-                          }}
+                        <Text style={styles.profileChipStreakValue}>
+                          {profileSummary.currentDailyReviewStreak}
+                        </Text>
+                        <Text style={styles.profileChipStreakDni}>dni</Text>
+                      </View>
+                      <Text style={styles.profileChipStreakRekord}>
+                        Rekord {profileSummary.longestDailyReviewStreak}{" "}
+                        {profileSummary.longestDailyReviewStreak === 1
+                          ? "dzień"
+                          : "dni"}
+                      </Text>
+                    </View>
+                    <View style={styles.profileChipWords}>
+                      <View style={styles.profileChipWordsMain}>
+                        <Ionicons
+                          name="library-outline"
+                          size={18}
+                          color={StitchColors.primary}
                         />
-                      );
-                    })}
+                        <Text style={styles.profileChipWordsValue}>
+                          {profileSummary.knownWordsCount}
+                        </Text>
+                      </View>
+                      <Text style={styles.profileChipWordsLabel}>
+                        {profileSummary.knownWordsCount === 1
+                          ? "znane słowo"
+                          : profileSummary.knownWordsCount >= 2 &&
+                              profileSummary.knownWordsCount <= 4
+                            ? "znane słowa"
+                            : "znanych słów"}
+                      </Text>
+                    </View>
+                  </View>
+                ) : null}
+                {profileSummary?.email &&
+                profileSummary.email.trim() !== displayName.trim() ? (
+                  <Text style={styles.profileEmailLine} numberOfLines={2}>
+                    {profileSummary.email}
+                  </Text>
+                ) : null}
               </View>
-            </Animated.View>
-          </View>
-        </View>
-
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-
-        <Pressable
-          android_ripple={ANDROID_RIPPLE_PRIMARY}
-          style={({ pressed }) => [
-            styles.primaryButton,
-            (!canSave || isSaving) && styles.buttonDisabled,
-            primarySolidPressStyle(pressed, !canSave || isSaving),
-          ]}
-          onPress={() => {
-            logUserAction("button_press", { target: "settings_save" });
-            void save();
-          }}
-          disabled={!canSave || isSaving}
-        >
-          {isSaving ? (
-            <ActivityIndicator color={StitchColors.onPrimary} />
-          ) : (
-            <Text style={styles.primaryButtonText}>Zapisz ustawienia</Text>
-          )}
-        </Pressable>
-
-        <Text style={styles.sectionHeading}>Widget preview</Text>
-        <View style={styles.widgetGrid}>
-          <View style={styles.widgetPreviewCanvas}>
-            <Text style={styles.widgetPreviewLabel}>Home screen preview</Text>
-            <WidgetHomePreviewCard
-              word={widgetPreview.word}
-              translations={widgetPreview.translations}
-              size={widgetSquareSize}
-            />
-          </View>
-          <View style={styles.widgetNote}>
-            <View style={styles.widgetRecommendedBanner}>
-              <View style={styles.widgetRecommendedBadge}>
-                <Text style={styles.widgetRecommendedBadgeText}>Zalecane</Text>
-              </View>
-              <Text style={styles.widgetNoteLead}>
-                Dodaj widżet Wordly na ekran główny, żeby mieć szybki podgląd dzisiejszego słowa bez
-                otwierania aplikacji.
-              </Text>
             </View>
-            <View style={styles.widgetInstructionList}>
-              {Platform.OS === "ios" ? (
-                <>
-                  <View style={styles.widgetInstructionRow}>
-                    <Text style={styles.widgetInstructionIndex}>1</Text>
-                    <Text style={styles.widgetNoteInstructions}>
-                      Na ekranie głównym przytrzymaj pusty fragment pulpitu i wybierz „Edytuj ekran
-                      główny”.
-                    </Text>
-                  </View>
-                  <View style={styles.widgetInstructionRow}>
-                    <Text style={styles.widgetInstructionIndex}>2</Text>
-                    <Text style={styles.widgetNoteInstructions}>
-                      Stuknij „+” u góry po lewej.
-                    </Text>
-                  </View>
-                  <View style={styles.widgetInstructionRow}>
-                    <Text style={styles.widgetInstructionIndex}>3</Text>
-                    <Text style={styles.widgetNoteInstructions}>
-                      Wyszukaj Wordly, wybierz rozmiar widżetu i potwierdź „Dodaj widżet”.
-                    </Text>
-                  </View>
-                </>
-              ) : (
-                <>
-                  <View style={styles.widgetInstructionRow}>
-                    <Text style={styles.widgetInstructionIndex}>1</Text>
-                    <Text style={styles.widgetNoteInstructions}>
-                      Przytrzymaj pusty fragment ekranu głównego.
-                    </Text>
-                  </View>
-                  <View style={styles.widgetInstructionRow}>
-                    <Text style={styles.widgetInstructionIndex}>2</Text>
-                    <Text style={styles.widgetNoteInstructions}>
-                      Otwórz bibliotekę widżetów, znajdź Wordly i dodaj widżet w wybranym rozmiarze.
-                    </Text>
-                  </View>
-                </>
-              )}
-            </View>
-          </View>
-        </View>
 
-        <Text style={styles.accountHeading}>Account Management</Text>
-        <View style={styles.accountCard}>
-          {hasSupabaseEnv() ? (
-            <Pressable
-              style={({ pressed }) => [
-                styles.accountRow,
-                pressed && styles.accountRowPressed,
-              ]}
-              disabled={chipDisabled}
-              onPress={() => {
-                logUserAction("button_press", { target: "settings_sign_out_prompt" });
-                Alert.alert(
-                  "Wyloguj się",
-                  "Zakończysz sesję na tym urządzeniu. Profil lokalny zostanie zachowany. Po ponownym logowaniu odzyskasz postęp.",
-                  [
-                    { text: "Anuluj", style: "cancel" },
-                    {
-                      text: "Wyloguj",
-                      style: "destructive",
-                      onPress: () => {
-                        logUserAction("button_press", { target: "settings_sign_out_confirm" });
-                        void (async () => {
-                          await signOutApp();
-                          router.replace("/(onboarding)");
-                        })();
-                      },
-                    },
-                  ],
-                );
-              }}
-            >
-              <View style={styles.accountRowLeft}>
-                <Ionicons
-                  name="log-out-outline"
-                  size={22}
-                  color={StitchColors.error}
+            {supabaseConfigured ? (
+              <View collapsable={false} onLayout={onAchievementsSectionLayout}>
+                <SettingsAchievementsSection
+                  rows={achievementRows}
+                  hasLoadError={achievementsHasLoadError}
+                  isInitialLoading={achievementsInitialLoading}
+                  onTrophyPress={setAchievementDetailRow}
+                  onSeeAll={() => setAllTrophiesOpen(true)}
                 />
-                <Text style={styles.accountRowLabel}>Sign out</Text>
               </View>
-            </Pressable>
-          ) : null}
-          <Pressable
-            style={({ pressed }) => [
-              styles.accountRow,
-              pressed && styles.accountRowPressed,
-            ]}
-            onPress={() => {
-              logUserAction("button_press", {
-                target: "settings_delete_account_prompt",
-              });
-              Alert.alert(
-                "Delete account",
-                "Account deletion is not available in the app yet. Contact support if you need to remove your data.",
-              );
-            }}
-          >
-            <View style={styles.accountRowLeft}>
-              <Ionicons
-                name="trash-outline"
-                size={22}
-                color={StitchColors.error}
-              />
-              <Text style={[styles.accountRowLabel, styles.accountRowDanger]}>
-                Delete account
-              </Text>
-            </View>
-          </Pressable>
-        </View>
+            ) : null}
 
-        {__DEV__ ? (
-          <View style={styles.devBlock}>
-            <Text style={styles.devLabel}>Developer</Text>
-            <Pressable
-              style={styles.devButton}
-              onPress={() => {
-                Alert.alert(
-                  "Reset onboarding",
-                  "Clears the onboarding flag and opens the language step. For testing only.",
-                  [
-                    { text: "Cancel", style: "cancel" },
-                    {
-                      text: "Reset",
-                      onPress: () => {
-                        logUserAction("button_press", {
-                          target: "settings_dev_reset_onboarding",
-                        });
-                        void (async () => {
-                          await clearOnboardingCompletionFlag();
-                          markOnboardingIncomplete();
-                          router.replace("/(onboarding)/language-pair");
-                        })();
-                      },
-                    },
-                  ],
-                );
-              }}
+            <Text style={styles.sectionHeading}>Preferencje nauki</Text>
+            <View style={styles.listGroupOuter}>
+              <View style={styles.listGroupInner}>
+                <StitchSettingsRow
+                  icon="language-outline"
+                  title="Język ojczysty"
+                  subtitle="Tłumaczenia i interfejs"
+                  value={nativeName}
+                  disabled={chipDisabled}
+                  onPress={() => {
+                    logUserAction("button_press", {
+                      target: "settings_open_language_picker",
+                      which: "native",
+                    });
+                    setPicker("nativeLanguage");
+                  }}
+                />
+                <StitchSettingsRow
+                  icon="book-outline"
+                  title="Język nauki"
+                  subtitle="Język, którego się uczysz"
+                  value={learningName}
+                  disabled={chipDisabled}
+                  onPress={() => {
+                    logUserAction("button_press", {
+                      target: "settings_open_language_picker",
+                      which: "learning",
+                    });
+                    setPicker("learningLanguage");
+                  }}
+                />
+              </View>
+            </View>
+
+            <View
+              collapsable={false}
+              style={styles.learningModeSection}
+              onLayout={onLearningModeSectionLayout}
             >
-              <Text style={styles.devButtonText}>Reset onboarding (test)</Text>
-            </Pressable>
-          </View>
-        ) : null}
+              <Text
+                style={[
+                  styles.sectionHeading,
+                  styles.sectionHeadingLearningMode,
+                ]}
+              >
+                Tryb nauki
+              </Text>
+              <View style={styles.trackPanelOuter}>
+                <LearnTrackModeSegment
+                  value={learningModeType}
+                  disabled={chipDisabled}
+                  onChange={handleTrackModeChange}
+                />
+                <Animated.View
+                  key={learningModeType}
+                  entering={FadeIn.duration(260)}
+                  style={styles.modeGridWrap}
+                >
+                  <View style={styles.modeGrid} onLayout={onModeGridLayout}>
+                    {options && learningModeType === "difficulty"
+                      ? options.learningLevels.map((lvl) => {
+                          const p = trackProgressMaps.difficulty.get(
+                            lvl.value as any,
+                          );
+                          const availableCount = p?.availableCount ?? 0;
+                          const knownCount = p?.knownCount ?? 0;
+                          const pct = trackProgressMaps.getPct(
+                            knownCount,
+                            availableCount,
+                          );
+                          const barFill = progressBarFillPercent(
+                            pct,
+                            availableCount,
+                          );
+                          const selected =
+                            learningModeType === "difficulty" &&
+                            learningLevel === (lvl.value as any);
+                          return (
+                            <TrackModeTile
+                              key={lvl.value}
+                              title={lvl.label}
+                              description={getLearningLevelShortDescription(
+                                lvl.value,
+                              )}
+                              selected={selected}
+                              disabled={chipDisabled}
+                              availableCount={availableCount}
+                              pct={pct}
+                              barFill={barFill}
+                              width={modeTileWidth}
+                              onPress={() => {
+                                logUserAction("tile_press", {
+                                  target: "settings_learning_level",
+                                  level: String(lvl.value),
+                                });
+                                setLearningLevel(lvl.value as any);
+                              }}
+                            />
+                          );
+                        })
+                      : options?.categories.map((cat) => {
+                          const p = trackProgressMaps.categories.get(cat.id);
+                          const availableCount = p?.availableCount ?? 0;
+                          const knownCount = p?.knownCount ?? 0;
+                          const pct = trackProgressMaps.getPct(
+                            knownCount,
+                            availableCount,
+                          );
+                          const barFill = progressBarFillPercent(
+                            pct,
+                            availableCount,
+                          );
+                          const selected =
+                            learningModeType === "category" &&
+                            selectedCategoryId === cat.id;
+                          return (
+                            <TrackModeTile
+                              key={cat.id}
+                              title={cat.name}
+                              description={cat.description}
+                              selected={selected}
+                              disabled={chipDisabled}
+                              availableCount={availableCount}
+                              pct={pct}
+                              barFill={barFill}
+                              width={modeTileWidth}
+                              onPress={() => {
+                                logUserAction("tile_press", {
+                                  target: "settings_learning_category",
+                                  categoryId: cat.id,
+                                });
+                                setSelectedCategoryId(cat.id);
+                              }}
+                            />
+                          );
+                        })}
+                  </View>
+                </Animated.View>
+              </View>
+            </View>
+
+            {error ? <Text style={styles.error}>{error}</Text> : null}
+
+            <Text style={styles.sectionHeading}>Widget preview</Text>
+            <View style={styles.widgetGrid}>
+              <View style={styles.widgetPreviewCanvas}>
+                <Text style={styles.widgetPreviewLabel}>
+                  Home screen preview
+                </Text>
+                <WidgetHomePreviewCard
+                  word={widgetPreview.word}
+                  translations={widgetPreview.translations}
+                  size={widgetSquareSize}
+                />
+              </View>
+              <View style={styles.widgetNote}>
+                <View style={styles.widgetRecommendedBanner}>
+                  <View style={styles.widgetRecommendedBadge}>
+                    <Text style={styles.widgetRecommendedBadgeText}>
+                      Zalecane
+                    </Text>
+                  </View>
+                  <Text style={styles.widgetNoteLead}>
+                    Dodaj widżet Wordly na ekran główny, żeby mieć szybki
+                    podgląd dzisiejszego słowa bez otwierania aplikacji.
+                  </Text>
+                </View>
+                <View style={styles.widgetInstructionList}>
+                  {Platform.OS === "ios" ? (
+                    <>
+                      <View style={styles.widgetInstructionRow}>
+                        <Text style={styles.widgetInstructionIndex}>1</Text>
+                        <Text style={styles.widgetNoteInstructions}>
+                          Na ekranie głównym przytrzymaj pusty fragment pulpitu
+                          i wybierz „Edytuj ekran główny”.
+                        </Text>
+                      </View>
+                      <View style={styles.widgetInstructionRow}>
+                        <Text style={styles.widgetInstructionIndex}>2</Text>
+                        <Text style={styles.widgetNoteInstructions}>
+                          Stuknij „+” u góry po lewej.
+                        </Text>
+                      </View>
+                      <View style={styles.widgetInstructionRow}>
+                        <Text style={styles.widgetInstructionIndex}>3</Text>
+                        <Text style={styles.widgetNoteInstructions}>
+                          Wyszukaj Wordly, wybierz rozmiar widżetu i potwierdź
+                          „Dodaj widżet”.
+                        </Text>
+                      </View>
+                    </>
+                  ) : (
+                    <>
+                      <View style={styles.widgetInstructionRow}>
+                        <Text style={styles.widgetInstructionIndex}>1</Text>
+                        <Text style={styles.widgetNoteInstructions}>
+                          Przytrzymaj pusty fragment ekranu głównego.
+                        </Text>
+                      </View>
+                      <View style={styles.widgetInstructionRow}>
+                        <Text style={styles.widgetInstructionIndex}>2</Text>
+                        <Text style={styles.widgetNoteInstructions}>
+                          Otwórz bibliotekę widżetów, znajdź Wordly i dodaj
+                          widżet w wybranym rozmiarze.
+                        </Text>
+                      </View>
+                    </>
+                  )}
+                </View>
+              </View>
+            </View>
+
+            <Text style={styles.accountHeading}>Account Management</Text>
+            <View style={styles.accountCard}>
+              {hasSupabaseEnv() ? (
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.accountRow,
+                    pressed && styles.accountRowPressed,
+                  ]}
+                  disabled={chipDisabled}
+                  onPress={() => {
+                    logUserAction("button_press", {
+                      target: "settings_sign_out_prompt",
+                    });
+                    Alert.alert(
+                      "Wyloguj się",
+                      "Zakończysz sesję na tym urządzeniu. Profil lokalny zostanie zachowany. Po ponownym logowaniu odzyskasz postęp.",
+                      [
+                        { text: "Anuluj", style: "cancel" },
+                        {
+                          text: "Wyloguj",
+                          style: "destructive",
+                          onPress: () => {
+                            logUserAction("button_press", {
+                              target: "settings_sign_out_confirm",
+                            });
+                            void (async () => {
+                              await signOutApp();
+                              router.replace("/(onboarding)");
+                            })();
+                          },
+                        },
+                      ],
+                    );
+                  }}
+                >
+                  <View style={styles.accountRowLeft}>
+                    <Ionicons
+                      name="log-out-outline"
+                      size={22}
+                      color={StitchColors.error}
+                    />
+                    <Text style={styles.accountRowLabel}>Sign out</Text>
+                  </View>
+                </Pressable>
+              ) : null}
+              <Pressable
+                style={({ pressed }) => [
+                  styles.accountRow,
+                  pressed && styles.accountRowPressed,
+                ]}
+                onPress={() => {
+                  logUserAction("button_press", {
+                    target: "settings_delete_account_prompt",
+                  });
+                  Alert.alert(
+                    "Delete account",
+                    "Account deletion is not available in the app yet. Contact support if you need to remove your data.",
+                  );
+                }}
+              >
+                <View style={styles.accountRowLeft}>
+                  <Ionicons
+                    name="trash-outline"
+                    size={22}
+                    color={StitchColors.error}
+                  />
+                  <Text
+                    style={[styles.accountRowLabel, styles.accountRowDanger]}
+                  >
+                    Delete account
+                  </Text>
+                </View>
+              </Pressable>
+            </View>
+
+            {__DEV__ ? (
+              <View style={styles.devBlock}>
+                <Text style={styles.devLabel}>Developer</Text>
+                <Pressable
+                  style={styles.devButton}
+                  onPress={() => {
+                    Alert.alert(
+                      "Reset onboarding",
+                      "Clears the onboarding flag and opens the language step. For testing only.",
+                      [
+                        { text: "Cancel", style: "cancel" },
+                        {
+                          text: "Reset",
+                          onPress: () => {
+                            logUserAction("button_press", {
+                              target: "settings_dev_reset_onboarding",
+                            });
+                            void (async () => {
+                              await clearOnboardingCompletionFlag();
+                              markOnboardingIncomplete();
+                              router.replace("/(onboarding)/language-pair");
+                            })();
+                          },
+                        },
+                      ],
+                    );
+                  }}
+                >
+                  <Text style={styles.devButtonText}>
+                    Reset onboarding (test)
+                  </Text>
+                </Pressable>
+              </View>
+            ) : null}
           </>
         )}
       </ScrollView>
+
+      {/* Fade contentu w pasie między tab barem a przyciskiem. */}
+      <LinearGradient
+        pointerEvents="none"
+        style={[
+          styles.bottomTabsFadeOverlay,
+          { height: bottomTabsFadeHeight },
+        ]}
+        colors={[
+          rgbaFromHex(StitchColors.surface, 0),
+          rgbaFromHex(StitchColors.surface, 0.03),
+          rgbaFromHex(StitchColors.surface, 0.12),
+          rgbaFromHex(StitchColors.surface, 0.32),
+          rgbaFromHex(StitchColors.surface, 0.72),
+          rgbaFromHex(StitchColors.surface, 1),
+        ]}
+        locations={[0, 0.22, 0.5, 0.74, 0.9, 1]}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+      />
+
+      <View
+        style={[styles.saveFooter, { bottom: SAVE_FOOTER_GAP_PX }]}
+        pointerEvents="box-none"
+      >
+        <View style={styles.saveFooterInner}>
+          <Pressable
+            android_ripple={ANDROID_RIPPLE_PRIMARY}
+            style={({ pressed }) => [
+              styles.primaryButton,
+              (!canSave || isSaving) && styles.buttonDisabled,
+              primarySolidPressStyle(pressed, !canSave || isSaving),
+            ]}
+            onPress={() => {
+              logUserAction("button_press", { target: "settings_save" });
+              void save();
+            }}
+            disabled={!canSave || isSaving}
+          >
+            {isSaving ? (
+              <ActivityIndicator color={StitchColors.onPrimary} />
+            ) : saveFailed ? (
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+              >
+                <Ionicons
+                  name="refresh"
+                  size={22}
+                  color={StitchColors.onPrimary}
+                  accessibilityLabel="Spróbuj zapisać ponownie"
+                />
+                <Text style={styles.primaryButtonText}>Zapisz ustawienia</Text>
+              </View>
+            ) : (
+              <Text style={styles.primaryButtonText}>Zapisz ustawienia</Text>
+            )}
+          </Pressable>
+        </View>
+      </View>
 
       {supabaseConfigured ? (
         <>
@@ -1111,6 +1120,26 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+  },
+  saveFooter: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 6,
+  },
+  bottomTabsFadeOverlay: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 5,
+  },
+  saveFooterInner: {
+    paddingHorizontal: 24,
+    paddingTop: 0,
+    paddingBottom: 0,
+    backgroundColor: "transparent",
   },
   scrollContent: {
     flexGrow: 1,
@@ -1392,7 +1421,7 @@ const styles = StyleSheet.create({
   primaryButton: {
     backgroundColor: StitchColors.primary,
     borderRadius: StitchRadius.xl,
-    paddingVertical: 18,
+    paddingVertical: 14,
     alignItems: "center",
     width: "100%",
     shadowColor: StitchColors.primary,

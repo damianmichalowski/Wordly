@@ -1,5 +1,6 @@
 import { useFocusEffect } from "@react-navigation/native";
 import { useCallback, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 
 import { useAchievementEvents } from "@/src/features/achievements";
 import { useUserProfileSettings } from "@/src/features/profile/hooks/useUserProfileSettings";
@@ -26,6 +27,7 @@ import { useLearningTrackProgress } from "./useLearningTrackProgress";
  * achievements, focus-based stale refetch, and a normalized `view` model for rendering.
  */
 export function useHomeScreenData() {
+  const { i18n } = useTranslation();
   const daily = useDailyWord();
   const track = useLearningTrackProgress();
   const profile = useUserProfileSettings();
@@ -39,6 +41,7 @@ export function useHomeScreenData() {
   useFocusEffect(
     useCallback(() => {
       daily.refreshIfStale();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refreshIfStale is stable from useDailyWord
     }, [daily.refreshIfStale]),
   );
 
@@ -63,7 +66,8 @@ export function useHomeScreenData() {
 
   const trackLabel = useMemo(
     () => resolveTrackLabel(profileSettings ?? null),
-    [profileSettings],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- i18n.t w resolveTrackLabel zależy od locale
+    [profileSettings, i18n.language],
   );
 
   const view = useMemo(():

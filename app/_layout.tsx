@@ -11,57 +11,36 @@ import {
     PlusJakartaSans_800ExtraBold,
     useFonts,
 } from "@expo-google-fonts/plus-jakarta-sans";
-import {
-    DarkTheme,
-    DefaultTheme,
-    ThemeProvider,
-} from "@react-navigation/native";
+import { ThemeProvider } from "@react-navigation/native";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
+import { I18nextProvider } from "react-i18next";
 import "react-native-reanimated";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { AppShellPrefetch } from "@/src/components/bootstrap/AppShellPrefetch";
 import { ConnectivityTransientHost } from "@/src/components/ui/ConnectivityTransientHost";
+import { configureWordlyNetInfo } from "@/src/network/configureWordlyNetInfo";
 import { BootstrapRouteShell } from "@/src/components/bootstrap/BootstrapRouteShell";
 import { SplashController } from "@/src/components/bootstrap/SplashController";
 import { AchievementEventsProvider } from "@/src/features/achievements/AchievementEventsProvider";
 import { useColorScheme } from "@/src/hooks/useColorScheme";
 import { subscribeReactQueryOnlineManager } from "@/src/lib/query/onlineManager";
 import { AppBootstrapProvider } from "@/src/providers/AppBootstrapProvider";
+import { NetworkStatusProvider } from "@/src/providers/NetworkStatusProvider";
 import { WordlyPersistQueryProvider } from "@/src/providers/WordlyPersistQueryProvider";
+import {
+  WordlyNavigationDark,
+  WordlyNavigationLight,
+} from "@/src/theme/navigationTheme";
+import { i18n } from "@/src/i18n/i18n";
 import { StitchColors } from "@/src/theme/wordlyStitchTheme";
 
 void SplashScreen.preventAutoHideAsync();
 
-const WordlyNavigationLight = {
-  ...DefaultTheme,
-  colors: {
-    ...DefaultTheme.colors,
-    primary: StitchColors.primary,
-    background: StitchColors.surface,
-    card: StitchColors.surfaceContainerLowest,
-    text: StitchColors.onSurface,
-    border: StitchColors.surfaceContainer,
-    notification: StitchColors.primary,
-  },
-};
-
-const WordlyNavigationDark = {
-  ...DarkTheme,
-  colors: {
-    ...DarkTheme.colors,
-    primary: StitchColors.primaryContainer,
-    background: "#121418",
-    card: "#1c1f26",
-    text: "#f2f4f4",
-    border: "#2f3334",
-    notification: StitchColors.primaryContainer,
-  },
-};
-
 export default function RootLayout() {
+  configureWordlyNetInfo();
   const [fontsLoaded] = useFonts({
     PlusJakartaSans_600SemiBold,
     PlusJakartaSans_700Bold,
@@ -77,18 +56,22 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
+      <I18nextProvider i18n={i18n}>
       <WordlyPersistQueryProvider>
-        <ConnectivityTransientHost />
-        <ReactQueryOnlineSetup />
-        <AppBootstrapProvider>
-          <AppShellPrefetch />
-          <SplashController fontsLoaded={fontsLoaded} />
-          {/* Achievement entry RPC runs here once session is ready (not from Settings). */}
-          <AchievementEventsProvider>
-            <RootNavigator />
-          </AchievementEventsProvider>
-        </AppBootstrapProvider>
+        <NetworkStatusProvider>
+          <ConnectivityTransientHost />
+          <ReactQueryOnlineSetup />
+          <AppBootstrapProvider>
+            <AppShellPrefetch />
+            <SplashController fontsLoaded={fontsLoaded} />
+            {/* Achievement entry RPC runs here once session is ready (not from Settings). */}
+            <AchievementEventsProvider>
+              <RootNavigator />
+            </AchievementEventsProvider>
+          </AppBootstrapProvider>
+        </NetworkStatusProvider>
       </WordlyPersistQueryProvider>
+      </I18nextProvider>
     </SafeAreaProvider>
   );
 }

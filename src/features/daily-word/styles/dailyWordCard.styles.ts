@@ -14,6 +14,22 @@ export const dailyWordCardStyles = StyleSheet.create({
   heroBlock: {
     gap: 6,
   },
+  heroHeaderRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+  },
+  heroHeaderMain: {
+    flex: 1,
+    minWidth: 0,
+    gap: 6,
+  },
+  heroHeaderActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexShrink: 0,
+    gap: 8,
+  },
   /** Grupa znaczeń (POS): tło + bardzo delikatna krawędź i lekki cień. */
   tile: {
     padding: 14,

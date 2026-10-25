@@ -1,33 +1,23 @@
 import { useRouter } from 'expo-router';
-import { USER_FACING_SIGN_IN_FAILED } from '@/src/components/ui/transportRetry.constants';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import {
-  isAppleSignInAvailable,
-  signInWithApple,
-  signInWithGoogle,
-} from '@/src/services/auth/socialAuth';
+import { signInWithGoogle } from '@/src/services/auth/socialAuth';
 import { getAuthenticatedUserId } from '@/src/services/auth/ensureSession';
 import { isOnboardingComplete } from '@/src/services/storage/onboardingStorage';
 import {
   ANDROID_RIPPLE_PRIMARY,
-  ANDROID_RIPPLE_SURFACE,
   primarySolidPressStyle,
-  surfacePressStyle,
 } from '@/src/components/ui/interaction';
 import { StitchColors, StitchFonts, StitchRadius } from '@/src/theme/wordlyStitchTheme';
 import { logUserAction } from '@/src/utils/userActionLog';
 
 export default function OnboardingScreen() {
+  const { t } = useTranslation();
   const router = useRouter();
   const [busy, setBusy] = useState(false);
-  const [appleAvailable, setAppleAvailable] = useState(false);
   const [alreadyOnboarded, setAlreadyOnboarded] = useState(false);
-
-  useEffect(() => {
-    void isAppleSignInAvailable().then(setAppleAvailable);
-  }, []);
 
   /** Już zalogowany + profil zapisany → od razu do aplikacji (np. po wejściu z `/`). */
   useEffect(() => {
@@ -65,28 +55,16 @@ export default function OnboardingScreen() {
       await afterSuccessfulSignIn();
       return;
     }
-    Alert.alert('Google', USER_FACING_SIGN_IN_FAILED);
-  }, [afterSuccessfulSignIn]);
-
-  const onApple = useCallback(async () => {
-    logUserAction('button_press', { target: 'onboarding_sign_in_apple' });
-    setBusy(true);
-    const result = await signInWithApple();
-    setBusy(false);
-    if (result.ok) {
-      await afterSuccessfulSignIn();
-      return;
-    }
-    Alert.alert('Apple', USER_FACING_SIGN_IN_FAILED);
-  }, [afterSuccessfulSignIn]);
+    Alert.alert('Google', t('common.authSignInFailed'));
+  }, [afterSuccessfulSignIn, t]);
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Wordly</Text>
       <Text style={styles.subtitle}>
         {alreadyOnboarded
-          ? 'Zaloguj się ponownie, aby wczytać słowa i postęp z konta (sesja wygasła lub wylogowano).'
-          : 'Zaloguj się, aby zapisywać postęp i profil w Supabase. Wybierz konto Google lub Apple (iOS).'}
+          ? t("onboarding.signInSubtitleSessionRenew")
+          : t("onboarding.signInSubtitleFirst")}
       </Text>
 
       <Pressable
@@ -102,24 +80,11 @@ export default function OnboardingScreen() {
         {busy ? (
           <ActivityIndicator color={StitchColors.onPrimary} />
         ) : (
-          <Text style={styles.primaryButtonText}>Kontynuuj z Google</Text>
+          <Text style={styles.primaryButtonText}>
+            {t("onboarding.continueGoogle")}
+          </Text>
         )}
       </Pressable>
-
-      {Platform.OS === 'ios' && appleAvailable ? (
-        <Pressable
-          android_ripple={ANDROID_RIPPLE_SURFACE}
-          style={({ pressed }) => [
-            styles.appleButton,
-            busy && styles.buttonDisabled,
-            surfacePressStyle(pressed, busy),
-          ]}
-          onPress={onApple}
-          disabled={busy}
-        >
-          <Text style={styles.appleButtonText}>Kontynuuj z Apple</Text>
-        </Pressable>
-      ) : null}
     </View>
   );
 }
@@ -163,17 +128,6 @@ const styles = StyleSheet.create({
   },
   primaryButtonText: {
     color: StitchColors.onPrimary,
-    fontFamily: StitchFonts.bodySemi,
-    fontSize: 16,
-  },
-  appleButton: {
-    backgroundColor: StitchColors.onSurface,
-    borderRadius: StitchRadius.xl,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  appleButtonText: {
-    color: StitchColors.surfaceContainerLowest,
     fontFamily: StitchFonts.bodySemi,
     fontSize: 16,
   },

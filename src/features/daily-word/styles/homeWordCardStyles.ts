@@ -50,6 +50,13 @@ export const homeWordCardStyles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
   },
+  badgeRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 6,
+    flexShrink: 1,
+  },
   levelPill: {
     paddingHorizontal: 12,
     paddingVertical: 6,

@@ -1,6 +1,5 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
-import { TRANSPORT_RETRY_SUBTITLE } from "@/src/components/ui/transportRetry.constants";
 import { getUserProfileSettings } from "@/src/features/profile/services/profile.service";
 import type { UserProfileSettings } from "@/src/features/profile/types/profile.types";
 import { queryKeys } from "@/src/lib/query/queryKeys";
@@ -14,11 +13,8 @@ export function useUserProfileSettings() {
     placeholderData: keepPreviousData,
   });
 
-  const errorMessage = query.isError ? TRANSPORT_RETRY_SUBTITLE : null;
-
   return {
     isLoading: !query.isFetched && !query.isError,
-    error: errorMessage,
     data: query.data ?? null,
     refresh: query.refetch,
   };
