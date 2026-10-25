@@ -397,8 +397,12 @@ export type Database = {
       user_word_progress: {
         Row: {
           created_at: string
+          difficult_correct_streak: number
+          difficult_dont_know_counter: number
+          difficult_marked_at: string | null
           id: string
           interval_days: number
+          is_difficult: boolean | null
           known_at: string | null
           last_review_at: string | null
           next_review_at: string | null
@@ -409,8 +413,12 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          difficult_correct_streak?: number
+          difficult_dont_know_counter?: number
+          difficult_marked_at?: string | null
           id?: string
           interval_days?: number
+          is_difficult?: boolean | null
           known_at?: string | null
           last_review_at?: string | null
           next_review_at?: string | null
@@ -421,8 +429,12 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          difficult_correct_streak?: number
+          difficult_dont_know_counter?: number
+          difficult_marked_at?: string | null
           id?: string
           interval_days?: number
+          is_difficult?: boolean | null
           known_at?: string | null
           last_review_at?: string | null
           next_review_at?: string | null
@@ -434,6 +446,47 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "user_word_progress_word_id_fkey"
+            columns: ["word_id"]
+            isOneToOne: false
+            referencedRelation: "words"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      word_report: {
+        Row: {
+          comment: string | null
+          created_at: string
+          id: string
+          issue_type: string
+          reporter_user_id: string
+          status: string
+          updated_at: string
+          word_id: string
+        }
+        Insert: {
+          comment?: string | null
+          created_at?: string
+          id?: string
+          issue_type: string
+          reporter_user_id: string
+          status?: string
+          updated_at?: string
+          word_id: string
+        }
+        Update: {
+          comment?: string | null
+          created_at?: string
+          id?: string
+          issue_type?: string
+          reporter_user_id?: string
+          status?: string
+          updated_at?: string
+          word_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "word_report_word_id_fkey"
             columns: ["word_id"]
             isOneToOne: false
             referencedRelation: "words"
@@ -534,21 +587,33 @@ export type Database = {
         Args: { p_word_ids: string[] }
         Returns: Json
       }
+      complete_revision_session: {
+        Args: {
+          p_session_id: string
+          p_answers: Json
+          p_duration_seconds?: number
+          p_apply_srs?: boolean
+        }
+        Returns: Json
+      }
       consume_achievement_events: {
         Args: { p_event_ids: string[] }
         Returns: Json
       }
       get_completion_screen_data: { Args: never; Returns: Json }
+      get_difficult_words: { Args: { p_limit?: number | null }; Returns: Json }
       get_daily_review_words: { Args: never; Returns: Json }
       get_daily_word_details: { Args: never; Returns: Json }
       get_known_word_unlock_data: { Args: never; Returns: Json }
       get_learning_option_catalog_counts: { Args: never; Returns: Json }
       get_learning_options_progress: { Args: never; Returns: Json }
       get_learning_track_progress: { Args: never; Returns: Json }
+      get_library_overview: { Args: never; Returns: Json }
       get_library_words: {
         Args: {
           p_category_codes?: string[]
           p_cefr_codes?: string[]
+          p_collection?: string
           p_limit?: number
           p_offset?: number
           p_search?: string
@@ -569,6 +634,7 @@ export type Database = {
       }
       get_quick_practice_words: { Args: { p_limit: number }; Returns: Json }
       get_recently_learned_words: { Args: never; Returns: Json }
+      get_revision_dashboard_stats: { Args: never; Returns: Json }
       get_revision_hub_stats: { Args: never; Returns: Json }
       get_user_achievements: { Args: never; Returns: Json }
       get_user_profile_summary: { Args: never; Returns: Json }
@@ -595,6 +661,63 @@ export type Database = {
           day_date: string | null
           word_id: string | null
         }[]
+      }
+      record_word_difficult_dont_know: {
+        Args: { p_word_id: string }
+        Returns: {
+          difficult_dont_know_counter: number
+          difficult_marked_at: string | null
+          is_difficult: boolean | null
+          status: string
+          user_id: string
+          word_id: string
+        }[]
+      }
+      set_word_difficult: {
+        Args: { p_is_difficult: boolean; p_word_id: string }
+        Returns: {
+          difficult_dont_know_counter: number
+          difficult_marked_at: string | null
+          is_difficult: boolean | null
+          status: string
+          user_id: string
+          word_id: string
+        }[]
+      }
+      set_word_difficult_dont_know_counter: {
+        Args: { p_counter: number; p_word_id: string }
+        Returns: {
+          difficult_dont_know_counter: number
+          is_difficult: boolean | null
+          status: string
+          user_id: string
+          word_id: string
+        }[]
+      }
+      set_word_difficult_correct_streak: {
+        Args: { p_streak: number; p_word_id: string }
+        Returns: {
+          difficult_correct_streak: number
+          is_difficult: boolean | null
+          status: string
+          user_id: string
+          word_id: string
+        }[]
+      }
+      start_revision_session: {
+        Args: {
+          p_mode: string
+          p_total_words: number
+        }
+        Returns: Json
+      }
+      submit_word_report: {
+        Args: {
+          p_comment?: string | null
+          p_issue_type: string
+          p_word_id: string
+        }
+        Returns: undefined
       }
       process_app_entry_achievement_events: { Args: never; Returns: Json }
       upsert_user_profile_settings: {
