@@ -47,6 +47,11 @@ export type WordDetails = {
   word_id: string
   lemma: string
   ipa: string | null
+  /** `user_word_progress.is_difficult` — true = marked, false/null = not marked in UI. */
+  is_difficult?: boolean | null
+  difficult_correct_streak?: number | null
+  difficult_dont_know_counter?: number | null
+  last_review_at?: string | null
   is_active: boolean
   created_at: string
   updated_at: string

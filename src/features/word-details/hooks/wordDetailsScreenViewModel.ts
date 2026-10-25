@@ -7,9 +7,8 @@ import type { WordDetails } from "@/src/features/word-details/types/wordDetails.
  * (cache/placeholder wins over blocking shell when data is present).
  */
 export type WordDetailsScreenPanel =
-  | { kind: "invalid_id"; message: string }
+  | { kind: "invalid_id" }
   | { kind: "loading_shell" }
-  | { kind: "error"; message: string }
   | { kind: "content"; details: WordDetails };
 
 export function computeWordDetailsScreenPanel(
@@ -18,7 +17,7 @@ export function computeWordDetailsScreenPanel(
 ): WordDetailsScreenPanel {
   const wordId = rawWordId.trim();
   if (wordId.length === 0) {
-    return { kind: "invalid_id", message: "Brak identyfikatora słowa." };
+    return { kind: "invalid_id" };
   }
 
   const details = query.data ?? null;
@@ -32,14 +31,11 @@ export function computeWordDetailsScreenPanel(
   }
 
   if (query.isError && !details) {
-    return {
-      kind: "error",
-      message: "Nie udało się wczytać szczegółów.",
-    };
+    return { kind: "loading_shell" };
   }
 
   if (!details) {
-    return { kind: "error", message: "Brak danych." };
+    return { kind: "loading_shell" };
   }
 
   return { kind: "content", details };

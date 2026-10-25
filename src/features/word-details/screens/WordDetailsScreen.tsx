@@ -1,15 +1,15 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useCallback, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ScreenHeader } from "@/src/components/layout/ScreenHeader";
+import { MarkDifficultIconButton } from "@/src/components/word/MarkDifficultIconButton";
 import {
   ANDROID_RIPPLE_ICON_ROUND,
-  ANDROID_RIPPLE_PRIMARY,
   HIT_SLOP_MINI,
-  primarySolidPressStyle,
   roundIconPressStyle,
 } from "@/src/components/ui/interaction";
 import { DailyWordScreenSkeleton } from "@/src/features/daily-word/components/DailyWordScreenSkeleton";
@@ -23,6 +23,7 @@ import { StitchColors } from "@/src/theme/wordlyStitchTheme";
 import { logUserAction } from "@/src/utils/userActionLog";
 import type { VocabularyWord } from "@/src/types/words";
 
+import { WordReportEntry } from "../components/WordReportEntry";
 import { useWordDetailsScreenData } from "../hooks/useWordDetailsScreenData";
 import { wordDetailsStyles as styles } from "../styles/wordDetailsStyles";
 import type { WordDetails } from "../types/wordDetails.types";
@@ -44,9 +45,10 @@ function toSpeakPayload(details: WordDetails): VocabularyWord {
 }
 
 export default function WordDetailsScreen() {
+  const { t } = useTranslation();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { wordId, panel, refetch } = useWordDetailsScreenData();
+  const { wordId, panel } = useWordDetailsScreenData();
 
   const posGroups = useMemo(() => {
     if (panel.kind !== "content") {
@@ -81,7 +83,7 @@ export default function WordDetailsScreen() {
     const loaded = panel.kind === "content";
     return (
       <ScreenHeader
-        title={loaded ? "" : "Słowo"}
+        title={loaded ? "" : t("wordDetails.headerFallbackTitle")}
         titleSize="small"
         hideTitle={loaded}
         onBackPress={() => {
@@ -93,73 +95,45 @@ export default function WordDetailsScreen() {
         }}
       />
     );
-  }, [panel.kind, router, wordId]);
+  }, [panel.kind, router, wordId, t]);
 
   const centerScroll =
-    panel.kind === "error" || panel.kind === "invalid_id";
-
-  const errorMessage =
-    panel.kind === "invalid_id" || panel.kind === "error"
-      ? panel.message
-      : null;
+    panel.kind === "loading_shell" || panel.kind === "invalid_id";
 
   const ipa =
     panel.kind === "content" ? panel.details.ipa?.trim() : undefined;
 
   const scrollBody =
-    panel.kind === "loading_shell" ? (
+    panel.kind === "loading_shell" || panel.kind === "invalid_id" ? (
       <DailyWordScreenSkeleton />
-    ) : panel.kind === "invalid_id" || panel.kind === "error" ? (
-      <View style={styles.errorBlock}>
-        <Ionicons
-          name="cloud-offline-outline"
-          size={48}
-          color={StitchColors.outlineVariant}
-        />
-        <Text style={styles.titleError}>Nie udało się wczytać</Text>
-        <Text style={styles.muted}>{errorMessage}</Text>
-        <Pressable
-          android_ripple={ANDROID_RIPPLE_PRIMARY}
-          style={({ pressed }) => [
-            styles.retryButton,
-            primarySolidPressStyle(pressed, false),
-          ]}
-          onPress={() => {
-            logUserAction("button_press", {
-              target: "word_details_retry",
-              wordId: wordId || "",
-            });
-            void refetch();
-          }}
-        >
-          <Text style={styles.retryButtonText}>Spróbuj ponownie</Text>
-        </Pressable>
-        <Pressable
-          android_ripple={ANDROID_RIPPLE_PRIMARY}
-          style={({ pressed }) => [
-            styles.ghostButton,
-            primarySolidPressStyle(pressed, false),
-          ]}
-          onPress={() => {
-            logUserAction("button_press", {
-              target: "word_details_back_error_state",
-              wordId: wordId || "",
-            });
-            router.back();
-          }}
-        >
-          <Text style={styles.ghostButtonText}>Wróć</Text>
-        </Pressable>
-      </View>
     ) : (
       <>
         <View style={card.heroBlock}>
-          <View style={card.heroTitleRow}>
-            <Text style={card.lemma}>{panel.details.lemma}</Text>
-            <View style={card.heroMetaInline}>
+          <View style={card.heroHeaderRow}>
+            <View style={card.heroHeaderMain}>
+              <Text style={card.lemma}>{panel.details.lemma}</Text>
+              <View style={card.heroIpaRow}>
+                {ipa ? <Text style={card.ipa}>/{ipa}/</Text> : null}
+                <View style={card.pillCefrCompact}>
+                  <Text style={card.pillCefrCompactText}>
+                    {panel.details.cefr.code}
+                  </Text>
+                </View>
+                {panel.details.categories.map((c) => (
+                  <View key={c.id} style={card.pillCefrCompact}>
+                    <Text style={card.pillCefrCompactText}>{c.name}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+            <View style={card.heroHeaderActions}>
+              <MarkDifficultIconButton
+                wordId={panel.details.word_id}
+                marked={panel.details.is_difficult === true}
+              />
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Wymowa"
+                accessibilityLabel={t("wordDetails.a11yPronounce")}
                 android_ripple={ANDROID_RIPPLE_ICON_ROUND}
                 hitSlop={HIT_SLOP_MINI}
                 style={({ pressed }) => [
@@ -180,19 +154,6 @@ export default function WordDetailsScreen() {
                 />
               </Pressable>
             </View>
-          </View>
-          <View style={card.heroIpaRow}>
-            {ipa ? <Text style={card.ipa}>/{ipa}/</Text> : null}
-            <View style={card.pillCefrCompact}>
-              <Text style={card.pillCefrCompactText}>
-                {panel.details.cefr.code}
-              </Text>
-            </View>
-            {panel.details.categories.map((c) => (
-              <View key={c.id} style={card.pillCefrCompact}>
-                <Text style={card.pillCefrCompactText}>{c.name}</Text>
-              </View>
-            ))}
           </View>
         </View>
 
@@ -227,6 +188,13 @@ export default function WordDetailsScreen() {
             })}
           </View>
         ))}
+
+        <WordReportEntry
+          wordId={panel.details.word_id}
+          lemma={panel.details.lemma}
+          variant="inline"
+          logOpenTarget="word_details_report_open"
+        />
       </>
     );
 

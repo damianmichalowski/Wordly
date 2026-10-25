@@ -30,6 +30,7 @@ export function useWordDetailsScreenData(): {
 
   const panel = useMemo(
     () => computeWordDetailsScreenPanel(wordId, query),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- granular query.* above; full `query` ref churns each render
     [
       wordId,
       query.data,
@@ -37,6 +38,7 @@ export function useWordDetailsScreenData(): {
       query.isError,
       query.isPending,
       query.isFetching,
+      query.status,
     ],
   );
 
