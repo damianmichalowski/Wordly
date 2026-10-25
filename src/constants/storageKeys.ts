@@ -1,5 +1,7 @@
 export const storageKeys = {
   onboardingCompleted: 'wordly.onboarding.completed',
+  /** Last resolved UI locale — offline fallback + sync with profile. */
+  appUiLocale: 'wordly.app.ui_locale',
   userProfile: 'wordly.user.profile',
   /** Cached daily word snapshot (instant home screen). */
   currentWordSnapshot: (profileKey: string) =>

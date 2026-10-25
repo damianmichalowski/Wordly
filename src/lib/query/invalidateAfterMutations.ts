@@ -43,6 +43,8 @@ export function invalidateAfterProfileOrSettingsChange(
  *   w `useDailyWord` przez `fetchQuery` (bez dodatkowego `refetchQueries` na tor).
  * - **Stale-only (no background network)**: hub, biblioteka, podsumowanie, trofea, podgląd
  *   dziennego słowa tylko do odczytu — odświeżą się przy wejściu na zakładkę / focus.
+ * - **Warm prefetch** (hub, summary, achievements when events): `warmCachesAfterDailyWordMarkedKnown`
+ *   z `useDailyWord` — uzupełnia cache w tle bez listy biblioteki (patch zostaje).
  */
 export function invalidateAfterDailyWordMarkedKnown(qc: QueryClient) {
   qc.invalidateQueries({
@@ -70,8 +72,15 @@ export function invalidateAfterDailyWordMarkedKnown(qc: QueryClient) {
 /**
  * Po ukończeniu sesji z Revision Hub (np. Daily Review): zmieniają się liczniki / streak w hubie.
  * `profile.settings` nie jest dotykane — to nie zmiana preferencji użytkownika.
+ *
+ * **Library (`get_library_words`)**: nie invalidujemy — `complete_daily_review_session` aktualizuje
+ * tylko spacing (`last_review_at`, `next_review_at`, …), a lista biblioteki sortuje/filtruje po
+ * `known_at` + status `known`; te pola się nie zmieniają. Sesje quick/recent nie wołają RPC
+ * completion w ogóle. Następnie `warmCachesAfterDailyReviewSessionComplete` dopełnia cache hubu itd.
+ *
+ * Wywołuj **tylko** po ukończeniu sesji Daily Review **online** (zapis na serwerze).
  */
-export function invalidateAfterRevisionSessionComplete(qc: QueryClient) {
+export function invalidateAfterDailyReviewSessionComplete(qc: QueryClient) {
   qc.invalidateQueries({ queryKey: queryKeys.revision.hubStats });
   qc.invalidateQueries({ queryKey: queryKeys.learning.trackProgress });
   qc.invalidateQueries({
@@ -80,10 +89,6 @@ export function invalidateAfterRevisionSessionComplete(qc: QueryClient) {
   });
   qc.invalidateQueries({
     queryKey: queryKeys.achievements.list,
-    ...staleOnly,
-  });
-  qc.invalidateQueries({
-    queryKey: queryKeys.library.allKnownWords,
     ...staleOnly,
   });
 }

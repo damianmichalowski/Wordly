@@ -26,9 +26,19 @@ export const queryKeys = {
   },
   revision: {
     hubStats: ["revision", "hubStats"] as const,
+    /** Recently Learned deck: refetch when `recentlyLearned.availableCount` from hub changes. */
+    recentlyLearnedDeck: (availableCount: number, sessionCount: number) =>
+      ["revision", "recentlyLearnedDeck", availableCount, sessionCount] as const,
+    /** Last successful quick practice fetch per size — offline replay. */
+    quickPracticeDeck: (size: 5 | 10 | 20) =>
+      ["revision", "quickPracticeDeck", size] as const,
+    difficultWordsDeck: (limit: number) =>
+      ["revision", "difficultWordsDeck", limit] as const,
+    dashboardStats: ["revision", "dashboardStats"] as const,
   },
   library: {
     allKnownWords: ["library", "allKnownWords"] as const,
+    overview: ["library", "overview"] as const,
   },
   achievements: {
     list: ["achievements", "list"] as const,

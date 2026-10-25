@@ -19,6 +19,10 @@ export const staleTimes = {
   revisionHubStats: 90_000,
   /** Full library list — expensive; cache longer, invalidate on known-word changes. */
   libraryAllKnownWords: 3 * 60_000,
+  /** Revision dashboard: session stats, memory status. */
+  revisionDashboardStats: 2 * 60_000,
+  /** Library overview: CEFR progress, collection counts. */
+  libraryOverview: 2 * 60_000,
   /** Trophies list. */
   achievementsList: 5 * 60_000,
   /** Word detail screen / shared lemma payload. */
